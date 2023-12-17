@@ -7,27 +7,40 @@
 #include <pico/stdlib.h>
 #include <stdio.h>
 
+#include "reg.h"
+
 #define DEV_ADDR			0x3B
 
 #define REG_PID				0x00
 #define REG_REV				0x01
-#define REG_MOTION			0x02
-#define REG_DELTA_X			0x03
-#define REG_DELTA_Y			0x04
-#define REG_DELTA_XY_H		0x05
-#define REG_CONFIG			0x11
-#define REG_OBSERV			0x2E
-#define REG_MBURST			0x42
 
+#define REG_MOTION			0x02
 #define BIT_MOTION_MOT		(1 << 7)
 #define BIT_MOTION_OVF		(1 << 4)
 
+#define REG_DELTA_X			0x03
+#define REG_DELTA_Y			0x04
+
+// Surface quality
+#define REG_SQUAL			0x05
+
+#define REG_CONFIG			0x11
 #define BIT_CONFIG_HIRES	(1 << 7)
 
+#define REG_LED				0x1A
+#define LED_MED				0x00
+#define LED_HIGH			0x03
+#define LED_LOW				0x05
+
+#define REG_OBSERV			0x2E
 #define BIT_OBSERV_RUN		(0 << 6)
 #define BIT_OBSERV_REST1	(1 << 6)
 #define BIT_OBSERV_REST2	(2 << 6)
 #define BIT_OBSERV_REST3	(3 << 6)
+
+#define REG_ORIENTATION		0x77
+#define BIT_ORIENTATION_X_INV (1 << 5)
+#define BIT_ORIENTATION_Y_INV (1 << 6)
 
 #define SWIPE_COOLDOWN_TIME_MS	100 // time to wait before generating a new swipe event
 #define SWIPE_RELEASE_DELAY_MS	10  // time to wait before sending key release event
@@ -42,7 +55,7 @@ static struct
 	i2c_inst_t *i2c;
 } self;
 
-static uint8_t read_register8(uint8_t reg)
+uint8_t touchpad_read_i2c_u8(uint8_t reg)
 {
 	uint8_t val;
 
@@ -52,11 +65,11 @@ static uint8_t read_register8(uint8_t reg)
 	return val;
 }
 
-//static void write_register8(uint8_t reg, uint8_t val)
-//{
-//	uint8_t buffer[2] = { reg, val };
-//	i2c_write_blocking(self.i2c, DEV_ADDR, buffer, sizeof(buffer), false);
-//}
+void touchpad_write_i2c_u8(uint8_t reg, uint8_t val)
+{
+	uint8_t buffer[2] = { reg, val };
+	i2c_write_blocking(self.i2c, DEV_ADDR, buffer, sizeof(buffer), false);
+}
 
 int64_t release_key(alarm_id_t id, void *user_data)
 {
@@ -77,13 +90,18 @@ void touchpad_gpio_irq(uint gpio, uint32_t events)
 	if (!(events & GPIO_IRQ_EDGE_FALL))
 		return;
 
-	const uint8_t motion = read_register8(REG_MOTION);
+	const uint8_t motion = touchpad_read_i2c_u8(REG_MOTION);
 	if (motion & BIT_MOTION_MOT) {
-		int8_t x = read_register8(REG_DELTA_X);
-		int8_t y = read_register8(REG_DELTA_Y);
 
-		x = ((x < 127) ? x : (x - 256)) * -1;
-		y = ((y < 127) ? y : (y - 256));
+		// Reject if surface quality is below threshold
+		if (touchpad_read_i2c_u8(REG_SQUAL)
+		  < reg_get_value(REG_ID_TOUCHPAD_MIN_SQUAL)) {
+			return;
+		}
+
+		// Get touchpad coordinates
+		int8_t x = touchpad_read_i2c_u8(REG_DELTA_X);
+		int8_t y = touchpad_read_i2c_u8(REG_DELTA_Y);
 
 		if (self.callbacks) {
 			struct touch_callback *cb = self.callbacks;
@@ -115,6 +133,8 @@ void touchpad_add_touch_callback(struct touch_callback *callback)
 
 void touchpad_init(void)
 {
+	uint8_t val;
+
 	// determine the instance based on SCL pin, hope you didn't screw up the SDA pin!
 	self.i2c = i2c_instances[(PIN_SCL / 2) % 2];
 
@@ -143,4 +163,22 @@ void touchpad_init(void)
 	gpio_put(PIN_TP_RESET, 0);
 	sleep_ms(100);
 	gpio_put(PIN_TP_RESET, 1);
+
+	// Invert X motion
+	val = touchpad_read_i2c_u8(REG_ORIENTATION);
+	val |= BIT_ORIENTATION_X_INV;
+	touchpad_write_i2c_u8(REG_ORIENTATION, val);
+
+	// Set power to high
+	touchpad_set_led_power(LED_HIGH);
+}
+
+void touchpad_set_led_power(uint8_t setting)
+{
+	uint8_t val;
+
+	// Set lower 3 bits
+	val = touchpad_read_i2c_u8(REG_LED);
+	val = (val & ~0x7) | setting;
+	touchpad_write_i2c_u8(REG_LED, val);
 }

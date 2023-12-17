@@ -52,6 +52,14 @@ enum reg_id
 	REG_ID_UPDATE_DATA = 0x30, // Write HEX data to start firmware update mode
 	// Read to get update mode (off, receiving, failed)
 
+	// Control the touchpad over I2C
+	// Write the register number to TOUCHPAD_REG,
+	// then read or write from TOUCHPAD_VAL
+	REG_ID_TOUCHPAD_REG = 0x40,
+	REG_ID_TOUCHPAD_VAL = 0x41,
+	REG_ID_TOUCHPAD_MIN_SQUAL = 0x42, // Minimum sensor reading quality
+	REG_ID_TOUCHPAD_LED = 0x43, // Sensor LED power (0x0 med, 0x3 high, 0x5 low)
+
 	REG_ID_LAST,
 };
 

@@ -68,6 +68,7 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 	case REG_ID_CF2:
 	case REG_ID_DRIVER_STATE:
 	case REG_ID_SHUTDOWN_GRACE:
+	case REG_ID_TOUCHPAD_MIN_SQUAL:
 	{
 		if (is_write) {
 			reg_set_value(reg, in_data);
@@ -115,6 +116,30 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 		}
 		break;
 	}
+
+	case REG_ID_TOUCHPAD_REG:
+		if (is_write) {
+			reg_set_value(reg, in_data);
+		}
+		break;
+
+	case REG_ID_TOUCHPAD_VAL:
+		if (is_write) {
+			touchpad_write_i2c_u8(reg_get_value(REG_ID_TOUCHPAD_REG), in_data);
+		} else {
+			out_buffer[0] = touchpad_read_i2c_u8(reg_get_value(REG_ID_TOUCHPAD_REG));
+			*out_len = sizeof(uint8_t);
+		}
+		break;
+
+	case REG_ID_TOUCHPAD_LED:
+		if (is_write) {
+			touchpad_set_led_power(in_data);
+			reg_set_value(reg, in_data);
+		} else {
+			out_buffer[0] = reg_get_value(reg);
+			*out_len = sizeof(uint8_t);
+		}
 
 	case REG_ID_GIO: // gpio value
 	{
@@ -346,6 +371,8 @@ void reg_init(void)
 	reg_set_value(REG_ID_DRIVER_STATE, 0); // Driver not yet loaded
 
 	reg_set_value(REG_ID_SHUTDOWN_GRACE, 30);
+
+	reg_set_value(REG_ID_TOUCHPAD_MIN_SQUAL, 16);
 
 	touchpad_add_touch_callback(&touch_callback);
 }

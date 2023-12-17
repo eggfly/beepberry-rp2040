@@ -182,8 +182,8 @@ static void handle_key_event(uint r, uint c, bool pressed)
 	// Get keycode
 	keycode = kbd_entries[r][c];
 
-	// Don't send power key over USB
-	if ((keycode == 0) || (keycode == KEY_POWER)) {
+	// Don't send disabled keycodes
+	if (keycode == 0) {
 		return;
 	}
 
