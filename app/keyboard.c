@@ -61,17 +61,6 @@ struct hold_key
 };
 
 static struct hold_key power_hold_key;
-static struct hold_key left_shift_hold_key;
-static struct hold_key right_shift_hold_key;
-static struct hold_key phys_alt_hold_key;
-static struct hold_key sym_hold_key;
-
-static int64_t release_power_key_alarm_callback(alarm_id_t _, void* __)
-{
-	keyboard_inject_event(KEY_POWER, KEY_STATE_RELEASED);
-
-	return 0;
-}
 
 static void transition_hold_key_state(struct hold_key* hold_key, bool const pressed)
 {
@@ -106,31 +95,21 @@ static void transition_hold_key_state(struct hold_key* hold_key, bool const pres
 			if (!pressed) {
 				hold_key->state = KEY_STATE_RELEASED;
 
-			// Power key can be long hold
-			} else if (hold_key->keycode == KEY_POWER) {
+			} else {
 
-				// Driver unloaded, power back on
-				if (reg_get_value(REG_ID_DRIVER_STATE) == 0) {
-					pi_power_on(POWER_ON_BUTTON);
+				// Check for long hold time
+				key_held_for = to_ms_since_boot(get_absolute_time())
+					- hold_key->hold_start_time;
+				if (key_held_for > LONG_HOLD_MS) {
 					hold_key->state = KEY_STATE_LONG_HOLD;
 
-				// Driver loaded, send power off
-				} else {
+				// Power back on if unloaded
+				} else if (hold_key->keycode == KEY_POWER) {
 
-					// Check for long hold time
-					key_held_for = to_ms_since_boot(get_absolute_time())
-						- hold_key->hold_start_time;
-					if (key_held_for > LONG_HOLD_MS) {
-
-						keyboard_inject_power_key();
-
-						// Schedule power off
-						uint32_t shutdown_grace_ms = MAX(
-							reg_get_value(REG_ID_SHUTDOWN_GRACE) * 1000,
-							MINIMUM_SHUTDOWN_GRACE_MS);
-						pi_schedule_power_off(shutdown_grace_ms);
-
-						hold_key->state = KEY_STATE_LONG_HOLD;
+					// Driver unloaded, power back on
+					if (reg_get_value(REG_ID_DRIVER_STATE) == 0) {
+						pi_power_on(POWER_ON_BUTTON);
+						hold_key->state = KEY_STATE_RAN_ACTION;
 					}
 				}
 			}
@@ -140,37 +119,57 @@ static void transition_hold_key_state(struct hold_key* hold_key, bool const pres
 		case KEY_STATE_LONG_HOLD:
 			if (!pressed) {
 				hold_key->state = KEY_STATE_RELEASED;
+
+			// Driver loaded, send power off
+			} else if (reg_get_value(REG_ID_DRIVER_STATE) > 0) {
+
+				// Schedule power off
+				uint32_t shutdown_grace_ms = MAX(
+					reg_get_value(REG_ID_SHUTDOWN_GRACE) * 1000,
+					MINIMUM_SHUTDOWN_GRACE_MS);
+				pi_schedule_power_off(shutdown_grace_ms);
+
+				hold_key->state = KEY_STATE_RAN_ACTION;
 			}
+
 			break;
 
 		// Released -> Idle
 		case KEY_STATE_RELEASED:
 			hold_key->state = KEY_STATE_IDLE;
 			break;
+
+		// Ran action -> released
+		case KEY_STATE_RAN_ACTION:
+			if (!pressed) {
+				hold_key->state = KEY_STATE_RELEASED;
+			}
+			break;
 	}
 }
 
-// Return whether key event should be sent to queue
-static bool handle_hold_key_event(struct hold_key* hold_key, enum key_state* state,
-	bool pressed)
+static void handle_power_key_event(struct hold_key* power_key, bool pressed)
 {
 	// Save previous state
-	*state = hold_key->state;
+	enum key_state state = power_key->state;
 
 	// Transition state
-	transition_hold_key_state(hold_key, pressed);
+	transition_hold_key_state(power_key, pressed);
 
 	// Compare to previous state
-	if (*state != hold_key->state) {
-		*state = hold_key->state;
-
-		// Only send pressed, released, or hold events
-		return (*state == KEY_STATE_PRESSED)
-			|| (*state == KEY_STATE_RELEASED)
-			|| (*state == KEY_STATE_HOLD);
+	if (state == power_key->state) {
+		return;
 	}
 
-	return false;
+	// Normal press / release sends KEY_MUTE
+	if ((power_key->state == KEY_STATE_PRESSED)
+	 || (power_key->state == KEY_STATE_RELEASED)) {
+		keyboard_inject_event(KEY_MUTE, power_key->state);
+
+	// Long hold sends KEY_POWER
+	} else if (power_key->state == KEY_STATE_LONG_HOLD) {
+		keyboard_inject_power_key();
+	}
 }
 
 static void handle_key_event(uint r, uint c, bool pressed)
@@ -187,25 +186,10 @@ static void handle_key_event(uint r, uint c, bool pressed)
 		return;
 	}
 
-	// Handle holdable modifiers
-	if (keycode == left_shift_hold_key.keycode) {
-		send_update = handle_hold_key_event(&left_shift_hold_key, &state, pressed);
-
-	} else if (keycode == left_shift_hold_key.keycode) {
-		send_update = handle_hold_key_event(&left_shift_hold_key, &state, pressed);
-
-	} else if (keycode == phys_alt_hold_key.keycode) {
-		send_update = handle_hold_key_event(&phys_alt_hold_key, &state, pressed);
-
-	} else if (keycode == sym_hold_key.keycode) {
-		send_update = handle_hold_key_event(&sym_hold_key, &state, pressed);
-
 	// Basic press / release alpha key
-	} else {
-		send_update = (kbd_pressed_state[r][c] != pressed);
-		kbd_pressed_state[r][c] = pressed;
-		state = (pressed) ? KEY_STATE_PRESSED : KEY_STATE_RELEASED;
-	}
+	send_update = (kbd_pressed_state[r][c] != pressed);
+	kbd_pressed_state[r][c] = pressed;
+	state = (pressed) ? KEY_STATE_PRESSED : KEY_STATE_RELEASED;
 
 	// Don't send duplicate key events
 	if (!send_update) {
@@ -241,7 +225,7 @@ static int64_t timer_task(alarm_id_t id, void *user_data)
 #if NUM_OF_BTNS > 0
 	for (i = 0; i < NUM_OF_BTNS; i++) {
 		pressed = (gpio_get(btn_pins[i]) == 0);
-		transition_hold_key_state(&power_hold_key, pressed);
+		handle_power_key_event(&power_hold_key, pressed);
 	}
 #endif
 
@@ -272,11 +256,10 @@ void keyboard_inject_event(uint8_t key, enum key_state state)
 	}
 }
 
-// Simulate press event and schedule release
 void keyboard_inject_power_key()
 {
 	keyboard_inject_event(KEY_POWER, KEY_STATE_PRESSED);
-	add_alarm_in_ms(10, release_power_key_alarm_callback, NULL, true);
+	keyboard_inject_event(KEY_POWER, KEY_STATE_RELEASED);
 }
 
 void keyboard_add_key_callback(struct key_callback *callback)
@@ -324,14 +307,6 @@ void keyboard_init(void)
 	// Holdable modfiier keys
 	power_hold_key.keycode = KEY_POWER;
 	power_hold_key.state = KEY_STATE_IDLE;
-	left_shift_hold_key.keycode = KEY_LEFTSHIFT;
-	left_shift_hold_key.state = KEY_STATE_IDLE;
-	right_shift_hold_key.keycode = KEY_RIGHTSHIFT;
-	right_shift_hold_key.state = KEY_STATE_IDLE;
-	phys_alt_hold_key.keycode = KEY_LEFTALT;
-	phys_alt_hold_key.state = KEY_STATE_IDLE;
-	sym_hold_key.keycode = KEY_RIGHTALT;
-	sym_hold_key.state = KEY_STATE_IDLE;
 
 	add_alarm_in_ms(reg_get_value(REG_ID_FRQ), timer_task, NULL, true);
 }
