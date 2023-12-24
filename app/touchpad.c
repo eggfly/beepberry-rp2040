@@ -42,16 +42,11 @@
 #define BIT_ORIENTATION_X_INV (1 << 5)
 #define BIT_ORIENTATION_Y_INV (1 << 6)
 
-#define SWIPE_COOLDOWN_TIME_MS	100 // time to wait before generating a new swipe event
-#define SWIPE_RELEASE_DELAY_MS	10  // time to wait before sending key release event
-#define MOTION_IS_SWIPE(i, j)	(((i >= 15) || (i <= -15)) && ((j >= -5) && (j <= 5)))
-
 static i2c_inst_t *i2c_instances[2] = { i2c0, i2c1 };
 
 static struct
 {
 	struct touch_callback *callbacks;
-	uint32_t last_swipe_time;
 	i2c_inst_t *i2c;
 } self;
 
@@ -84,24 +79,33 @@ int64_t release_key(alarm_id_t id, void *user_data)
 
 void touchpad_gpio_irq(uint gpio, uint32_t events)
 {
-	if (gpio != PIN_TP_MOTION)
-		return;
+	uint8_t reg;
+	int8_t x, y;
 
-	if (!(events & GPIO_IRQ_EDGE_FALL))
+	if ((gpio != PIN_TP_MOTION) || !(events & GPIO_IRQ_EDGE_FALL)) {
 		return;
+	}
 
-	const uint8_t motion = touchpad_read_i2c_u8(REG_MOTION);
-	if (motion & BIT_MOTION_MOT) {
+	reg = touchpad_read_i2c_u8(REG_MOTION);
+
+	// Overflow, clear registers
+	if (reg & BIT_MOTION_OVF) {
+		(void)touchpad_read_i2c_u8(REG_DELTA_X);
+		(void)touchpad_read_i2c_u8(REG_DELTA_Y);
+		return;
+	}
+
+	if (reg & BIT_MOTION_MOT) {
+
+		// Get touchpad coordinates, clear registers
+		x = touchpad_read_i2c_u8(REG_DELTA_X);
+		y = touchpad_read_i2c_u8(REG_DELTA_Y);
 
 		// Reject if surface quality is below threshold
 		if (touchpad_read_i2c_u8(REG_SQUAL)
 		  < reg_get_value(REG_ID_TOUCHPAD_MIN_SQUAL)) {
 			return;
 		}
-
-		// Get touchpad coordinates
-		int8_t x = touchpad_read_i2c_u8(REG_DELTA_X);
-		int8_t y = touchpad_read_i2c_u8(REG_DELTA_Y);
 
 		if (self.callbacks) {
 			struct touch_callback *cb = self.callbacks;
