@@ -161,10 +161,10 @@ static void handle_power_key_event(struct hold_key* power_key, bool pressed)
 		return;
 	}
 
-	// Normal press / release sends KEY_MUTE
+	// Normal press / release sends KEY_STOP
 	if ((power_key->state == KEY_STATE_PRESSED)
 	 || (power_key->state == KEY_STATE_RELEASED)) {
-		keyboard_inject_event(KEY_MUTE, power_key->state);
+		keyboard_inject_event(KEY_STOP, power_key->state);
 
 	// Long hold sends KEY_POWER
 	} else if (power_key->state == KEY_STATE_LONG_HOLD) {
