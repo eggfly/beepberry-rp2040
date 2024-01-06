@@ -5,7 +5,6 @@
 #include <hardware/i2c.h>
 #include <hardware/irq.h>
 #include <pico/stdlib.h>
-#include <stdio.h>
 
 #define REG_ID_INVALID		0x00
 
@@ -33,7 +32,8 @@ static void irq_handler(void)
 	}
 
 	if (intr_stat & I2C_IC_INTR_STAT_R_TX_ABRT_BITS) {
-		printf("Recovering from TX_ABRT (reason=%x)\r\n", self.i2c->hw->tx_abrt_source);
+		// Recovering from TX_ABRT
+		// reason in self.i2c->hw->tx_abrt_source
 		self.i2c->hw->clr_tx_abrt;
 	}
 
