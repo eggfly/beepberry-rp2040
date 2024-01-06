@@ -5,6 +5,7 @@
 #include <hardware/i2c.h>
 #include <hardware/irq.h>
 #include <pico/stdlib.h>
+#include <stdio.h>
 
 #define REG_ID_INVALID		0x00
 
@@ -26,8 +27,18 @@ static struct
 
 static void irq_handler(void)
 {
+	uint32_t intr_stat = self.i2c->hw->intr_stat;
+	if (intr_stat == 0) {
+		return;
+	}
+
+	if (intr_stat & I2C_IC_INTR_STAT_R_TX_ABRT_BITS) {
+		printf("Recovering from TX_ABRT (reason=%x)\r\n", self.i2c->hw->tx_abrt_source);
+		self.i2c->hw->clr_tx_abrt;
+	}
+
 	// the controller sent data
-	if (self.i2c->hw->intr_stat & I2C_IC_INTR_MASK_M_RX_FULL_BITS) {
+	if (intr_stat & I2C_IC_INTR_MASK_M_RX_FULL_BITS) {
 		if (self.read_buffer.reg == REG_ID_INVALID) {
 			self.read_buffer.reg = self.i2c->hw->data_cmd & 0xff;
 
@@ -48,7 +59,7 @@ static void irq_handler(void)
 	}
 
 	// the controller requested a read
-	if (self.i2c->hw->intr_stat & I2C_IC_INTR_MASK_M_RD_REQ_BITS) {
+	if (intr_stat & I2C_IC_INTR_MASK_M_RD_REQ_BITS) {
 		i2c_write_raw_blocking(self.i2c, self.write_buffer, self.write_len);
 
 		self.i2c->hw->clr_rd_req;
@@ -76,7 +87,7 @@ void puppet_i2c_init(void)
 	gpio_pull_up(PIN_PUPPET_SCL);
 
 	// irq when the controller sends data, and when it requests a read
-	self.i2c->hw->intr_mask = I2C_IC_INTR_MASK_M_RD_REQ_BITS | I2C_IC_INTR_MASK_M_RX_FULL_BITS;
+	self.i2c->hw->intr_mask = I2C_IC_INTR_MASK_M_RD_REQ_BITS | I2C_IC_INTR_MASK_M_RX_FULL_BITS | I2C_IC_INTR_STAT_R_TX_ABRT_BITS;
 
 	const int irq = I2C0_IRQ + i2c_hw_index(self.i2c);
 	irq_set_exclusive_handler(irq, irq_handler);
