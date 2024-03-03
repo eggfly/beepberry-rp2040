@@ -156,10 +156,11 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 	case REG_ID_LED_R:
 	case REG_ID_LED_G:
 	case REG_ID_LED_B:
+	case REG_ID_LED:
 	{
 		if (is_write) {
 			reg_set_value(reg, in_data);
-			led_sync();
+			led_sync(reg_get_value(REG_ID_LED));
 		} else {
 			out_buffer[0] = reg_get_value(reg);
 			*out_len = sizeof(uint8_t);
@@ -167,11 +168,11 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 		break;
 	}
 
-	case REG_ID_LED: // gpio value
+	case REG_ID_LED_FLASH:
 	{
 		if (is_write) {
 			reg_set_value(reg, in_data);
-			led_sync();
+			led_flash(reg_get_value(REG_ID_LED_FLASH));
 		} else {
 			out_buffer[0] = reg_get_value(reg);
 			*out_len = sizeof(uint8_t);
@@ -182,6 +183,18 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 	// Rewake on timer
 	case REG_ID_REWAKE_MINS:
 	{
+		// Value of zero will cancel alarms
+		if (in_data == 0) {
+			pi_cancel_power_alarms();
+
+			// Reset startup reason if in rewake
+			if (reg_get_value(REG_ID_STARTUP_REASON) == POWER_ON_REWAKE) {
+				reg_set_value(REG_ID_STARTUP_REASON, POWER_ON_REWAKE_CANCELED);
+			}
+
+			break;
+		}
+
 		// Only run this if driver was loaded
 		// Otherwise, OS won't get the power key event
 		if (reg_get_value(REG_ID_DRIVER_STATE) == 0) {
