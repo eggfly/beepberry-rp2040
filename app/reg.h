@@ -33,7 +33,6 @@ enum reg_id
 	REG_ID_LED_R  = 0x21,
 	REG_ID_LED_G  = 0x22,
 	REG_ID_LED_B  = 0x23,
-	REG_ID_LED_FLASH = 0x2F, // Write to flash LED
 
 	REG_ID_REWAKE_MINS = 0x24, // Write to turn off Pi, power on in this many mins
 	REG_ID_SHUTDOWN_GRACE = 0x25, // Seconds to wait between shutdown signal and power off

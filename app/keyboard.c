@@ -154,6 +154,7 @@ static void handle_power_key_event(bool pressed)
 	 } if (power_hold_key.state == KEY_STATE_HOLD) {
 
 		if (reg_get_value(REG_ID_DRIVER_STATE) == 0) {
+			pi_cancel_power_alarms();
 			pi_power_on(POWER_ON_BUTTON);
 
 		// Send power short hold event
@@ -294,6 +295,24 @@ void keyboard_add_key_callback(struct key_callback *callback)
 		cb = cb->next;
 	}
 	cb->next = callback;
+}
+
+void keyboard_remove_key_callback(void *func)
+{
+	if (self.key_callbacks == NULL) {
+		return;
+	}
+
+	struct key_callback **cursor = &self.key_callbacks;
+
+	// Find matching and remove
+	while (*cursor != NULL) {
+		if ((*cursor)->func == func) {
+			*cursor = (*cursor)->next;
+			break;
+		}
+		cursor = &((*cursor)->next);
+	}
 }
 
 void keyboard_init(void)

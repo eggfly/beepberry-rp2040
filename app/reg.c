@@ -160,19 +160,7 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 	{
 		if (is_write) {
 			reg_set_value(reg, in_data);
-			led_sync(reg_get_value(REG_ID_LED));
-		} else {
-			out_buffer[0] = reg_get_value(reg);
-			*out_len = sizeof(uint8_t);
-		}
-		break;
-	}
-
-	case REG_ID_LED_FLASH:
-	{
-		if (is_write) {
-			reg_set_value(reg, in_data);
-			led_flash(reg_get_value(REG_ID_LED_FLASH));
+			led_set((enum led_setting)in_data);
 		} else {
 			out_buffer[0] = reg_get_value(reg);
 			*out_len = sizeof(uint8_t);

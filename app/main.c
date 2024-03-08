@@ -27,7 +27,9 @@ static void gpio_irq(uint gpio, uint32_t events)
 int main(void)
 {
 	// The here order is important because it determines callback call order
+#ifdef HAVE_USB
 	usb_init();
+#endif
 
 #ifndef NDEBUG
 	debug_init();

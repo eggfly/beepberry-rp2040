@@ -20,6 +20,13 @@ void pi_schedule_power_on(uint32_t ms);
 void pi_schedule_power_off(uint32_t ms);
 void pi_cancel_power_alarms();
 
-void led_sync(uint8_t enable);
+enum led_setting
+{
+	LED_SET_OFF = 0x0,
+	LED_SET_ON = 0x1,
+	LED_SET_FLASH_ON = 0x2,
+	LED_SET_FLASH_UNTIL_KEY = 0x3
+};
+
+void led_set(enum led_setting setting);
 void led_init(void);
-void led_flash(uint8_t enable);

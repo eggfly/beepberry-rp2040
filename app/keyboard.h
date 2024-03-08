@@ -26,5 +26,6 @@ void keyboard_inject_event(uint8_t key, enum key_state state);
 void keyboard_inject_power_key();
 
 void keyboard_add_key_callback(struct key_callback *callback);
+void keyboard_remove_key_callback(void *func);
 
 void keyboard_init(void);
