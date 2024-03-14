@@ -15,9 +15,8 @@
 alarm_id_t g_power_on_alarm = -1;
 alarm_id_t g_power_off_alarm = -1;
 
-#define LED_STATES_LEN 4
-struct led_state g_led_states[LED_STATES_LEN];
-uint32_t g_led_state_idx = 0;
+struct led_state g_led_state;
+struct led_state g_led_flash_state;
 alarm_id_t g_led_flash_alarm = -1;
 
 enum pi_state
@@ -169,33 +168,42 @@ void led_init(void)
 	gpio_set_function(PIN_LED_B, GPIO_FUNC_PWM);
 
 	// Default off
-	g_led_states[0].setting = LED_SET_OFF;
-	g_led_state_idx = 0;
+	g_led_state.setting = LED_SET_OFF;
+	g_led_flash_state.setting = LED_SET_OFF;
 	led_sync(false, 0, 0, 0);
 }
-
-
-static void set_led_state(struct led_state const* state);
-static void pop_led_state();
-static void push_led_state(struct led_state const* state);
 
 static int64_t pi_led_flash_alarm_callback(alarm_id_t _, void* __)
 {
 	static bool led_enabled = false;
-	bool not_flashing;
 	uint32_t alarm_ms;
 
 	// Flash canceled
-	not_flashing = (g_led_states[g_led_state_idx].setting != LED_SET_FLASH_ON)
-		&& (g_led_states[g_led_state_idx].setting != LED_SET_FLASH_UNTIL_KEY);
-	if ((g_led_flash_alarm < 0) || not_flashing) {
-		g_led_flash_alarm = -1;
+	if (g_led_flash_alarm < 0) {
 		return 0;
 	}
 
 	// Toggle LED
 	led_enabled = !led_enabled;
-	led_sync(led_enabled, g_led_states[g_led_state_idx].r, g_led_states[g_led_state_idx].g,  g_led_states[g_led_state_idx].b);
+	if (g_led_flash_state.setting == LED_SET_FLASH_UNTIL_KEY) {
+
+		// Switch between flash until key and base LED setting
+		if (led_enabled) {
+			led_sync(true, g_led_flash_state.r, g_led_flash_state.g,  g_led_flash_state.b);
+		} else {
+			led_sync((g_led_state.setting == LED_SET_ON), g_led_state.r, g_led_state.g,  g_led_state.b);
+		}
+
+	// Regular flash
+	} else if (g_led_state.setting == LED_SET_FLASH_ON) {
+		led_sync(led_enabled, g_led_state.r, g_led_state.g,  g_led_state.b);
+
+	// Flash canceled
+	} else {
+		led_sync((g_led_state.setting == LED_SET_ON), g_led_state.r, g_led_state.g,  g_led_state.b);
+		g_led_flash_alarm = -1;
+		return 0;
+	}
 
 	// Reschedule timer
 	alarm_ms = (led_enabled)
@@ -208,103 +216,48 @@ static int64_t pi_led_flash_alarm_callback(alarm_id_t _, void* __)
 
 static void pi_led_stop_flash_alarm_callback(uint8_t key, enum key_state state)
 {
-	// Don't restore if power key (simulated shutdown)
+	// Don't restore if power key (sent during shutdown)
 	if (key == KEY_POWER) {
 		return;
 	}
 
 	// Restore original LED state
-	if (g_led_states[g_led_state_idx].setting == LED_SET_FLASH_UNTIL_KEY) {
-		pop_led_state();
-	}
+	g_led_flash_state.setting = LED_SET_OFF;
 
 	// Remove key callback
 	keyboard_remove_key_callback(pi_led_stop_flash_alarm_callback);
 }
 static struct key_callback pi_led_stop_flash_key_callback = { .func = pi_led_stop_flash_alarm_callback };
 
-static void apply_led_state(struct led_state const* state)
+void led_set(struct led_state const* state)
 {
-	// Cancel any current flash timer
-	if (g_led_flash_alarm > 0) {
-		cancel_alarm(g_led_flash_alarm);
-		g_led_flash_alarm = -1;
+	// Store LED state
+	if (state->setting == LED_SET_FLASH_UNTIL_KEY) {
+		g_led_flash_state = *state;
+	} else {
+		g_led_state = *state;
 	}
-
-	// Set new state
-	led_sync((state->setting == LED_SET_ON),
-		state->r, state->g, state->b);
 
 	// Schedule flash callback
 	if ((state->setting == LED_SET_FLASH_ON) || (state->setting == LED_SET_FLASH_UNTIL_KEY)) {
 
-		if (g_led_flash_alarm < 0) {
-			g_led_flash_alarm = add_alarm_in_ms(LED_FLASH_ON_MS, pi_led_flash_alarm_callback, NULL, true);
+		// Cancel any current flash timer
+		if (g_led_flash_alarm > 0) {
+			cancel_alarm(g_led_flash_alarm);
+			g_led_flash_alarm = -1;
 		}
+
+		// Apply LED setting and schedule new timer using callback
+		g_led_flash_alarm = 1;
+		(void)pi_led_flash_alarm_callback(0, NULL);
 
 		// Add key calback to disable flash when key is pressed
 		if (state->setting == LED_SET_FLASH_UNTIL_KEY) {
 			keyboard_add_key_callback(&pi_led_stop_flash_key_callback);
 		}
-	}
-}
 
-static void overwrite_led_state(struct led_state const* state)
-{
-	g_led_states[g_led_state_idx] = *state;
-	apply_led_state(state);
-}
-
-static void pop_led_state()
-{
-	if (g_led_state_idx == 0) {
-		return;
-	}
-
-	// Set new state
-	g_led_state_idx--;
-	apply_led_state(&g_led_states[g_led_state_idx]);
-}
-
-static void push_led_state(struct led_state const* state)
-{
-	if (g_led_state_idx == (LED_STATES_LEN - 1)) {
-		return;
-	}
-
-	// Store new state
-	g_led_states[g_led_state_idx + 1] = *state;
-	g_led_state_idx++;
-
-	// Apply new state
-	apply_led_state(state);
-}
-
-void led_set(struct led_state const* state)
-{
-	struct led_state temp_state;
-
-	// Replace temporary flash with on: push state
-	if (g_led_states[g_led_state_idx].setting == LED_SET_FLASH_UNTIL_KEY) {
-
-		// Replace base state with off, but reapply flash
-		if (state->setting == LED_SET_OFF) {
-			temp_state = g_led_states[g_led_state_idx];
-			overwrite_led_state(state);
-			push_led_state(&temp_state);
-			apply_led_state(state);
-
-		// Push new state
-		} else {
-			push_led_state(state);
-		}
-
-	// Add temporary flash
-	} else if (state->setting == LED_SET_FLASH_UNTIL_KEY) {
-		push_led_state(state);
-	
-	// No temporary flash, overwrite and apply setting
+	// Regular on / off LED setting
 	} else {
-		overwrite_led_state(state);
+		led_sync((state->setting == LED_SET_ON), state->r, state->g,  state->b);
 	}
 }

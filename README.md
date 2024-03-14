@@ -330,13 +330,20 @@ Default value: 0
 
 These registers can be read and written to, each are 1 byte in size.
 
-Set the red/green/blue values between 0-255 `0x00 - 0xFF`
+Set the red/green/blue values between 0-255 `0x00 - 0xFF`.
 
-### LED On/Off (REG_LED = 0x20)
+Colors are applied after `REG_LED` is written.
+
+### LED setting (REG_LED = 0x20)
 
 This register can be read and written to, it is 1 byte in size.
 
-`0x00` is off, any other value is on
+Write color registers before this register.
+
+- `0x00`: LED off
+- `0x01`: LED on
+- `0x02`: LED flashes
+- `0x03`: LED flashes until key is pressed
 
 Default value: 0
 
