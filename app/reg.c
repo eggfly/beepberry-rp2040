@@ -156,11 +156,26 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 	case REG_ID_LED_R:
 	case REG_ID_LED_G:
 	case REG_ID_LED_B:
+	{
+		if (is_write) {
+			reg_set_value(reg, in_data);
+		} else {
+			out_buffer[0] = reg_get_value(reg);
+			*out_len = sizeof(uint8_t);
+		}
+		break;
+	}
+
 	case REG_ID_LED:
 	{
 		if (is_write) {
 			reg_set_value(reg, in_data);
-			led_set((enum led_setting)in_data);
+			struct led_state state;
+			state.setting = (enum led_setting)in_data;
+			state.r = reg_get_value(REG_ID_LED_R);
+			state.g = reg_get_value(REG_ID_LED_G);
+			state.b = reg_get_value(REG_ID_LED_B);
+			led_set(&state);
 		} else {
 			out_buffer[0] = reg_get_value(reg);
 			*out_len = sizeof(uint8_t);

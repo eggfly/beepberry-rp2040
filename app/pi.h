@@ -28,5 +28,12 @@ enum led_setting
 	LED_SET_FLASH_UNTIL_KEY = 0x3
 };
 
-void led_set(enum led_setting setting);
+struct led_state
+{
+	enum led_setting setting;
+	uint8_t r, g, b;
+};
+
 void led_init(void);
+void led_set(struct led_state const* state);
+
