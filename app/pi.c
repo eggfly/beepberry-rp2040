@@ -227,7 +227,10 @@ static void pi_led_stop_flash_alarm_callback(uint8_t key, enum key_state state)
 	// Remove key callback
 	keyboard_remove_key_callback(pi_led_stop_flash_alarm_callback);
 }
-static struct key_callback pi_led_stop_flash_key_callback = { .func = pi_led_stop_flash_alarm_callback };
+static struct key_callback pi_led_stop_flash_key_callback = {
+	.func = pi_led_stop_flash_alarm_callback,
+	.next = NULL
+};
 
 void led_set(struct led_state const* state)
 {
@@ -241,15 +244,11 @@ void led_set(struct led_state const* state)
 	// Schedule flash callback
 	if ((state->setting == LED_SET_FLASH_ON) || (state->setting == LED_SET_FLASH_UNTIL_KEY)) {
 
-		// Cancel any current flash timer
-		if (g_led_flash_alarm > 0) {
-			cancel_alarm(g_led_flash_alarm);
-			g_led_flash_alarm = -1;
-		}
-
 		// Apply LED setting and schedule new timer using callback
-		g_led_flash_alarm = 1;
-		(void)pi_led_flash_alarm_callback(0, NULL);
+		if (g_led_flash_alarm < 0) {
+			g_led_flash_alarm = 1;
+			(void)pi_led_flash_alarm_callback(0, NULL);
+		}
 
 		// Add key calback to disable flash when key is pressed
 		if (state->setting == LED_SET_FLASH_UNTIL_KEY) {

@@ -292,9 +292,16 @@ void keyboard_add_key_callback(struct key_callback *callback)
 	// find last and insert after
 	struct key_callback *cb = self.key_callbacks;
 	while (cb->next) {
+
+		// Only add callback once to avoid cycles
+		if (cb == callback) {
+			return;
+		}
+
 		cb = cb->next;
 	}
 	cb->next = callback;
+	callback->next = NULL;
 }
 
 void keyboard_remove_key_callback(void *func)
