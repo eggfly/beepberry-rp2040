@@ -4,3 +4,6 @@
 [submodule "pico-flashloader"]
 	path = 3rdparty/pico-flashloader
 	url = https://github.com/rhulme/pico-flashloader.git
+[submodule "pico-extras"]
+	path = 3rdparty/pico-extras
+	url = git@github.com:ardangelo/pico-extras.git

@@ -29,6 +29,7 @@ target_link_libraries(firmware
 	hardware_adc
 	hardware_rtc
 	hardware_flash
+	hardware_sleep
 	pico_bootsel_via_double_reset
 	pico_stdlib
 	tinyusb_device
@@ -45,8 +46,7 @@ pico_add_hex_output(firmware)
 
 # binary info in flash
 pico_set_program_name(firmware "I2C Puppet")
-pico_set_program_version(firmware "3.0")
+pico_set_program_version(firmware "3.6")
 
 # printf targets
 pico_enable_stdio_uart(firmware 1)
-

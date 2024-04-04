@@ -4,7 +4,8 @@ set(PICO_PLATFORM "rp2040")
 set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/boards)
 
 # Pull in SDK (must be before project)
-include(3rdparty/pico-sdk/pico_sdk_init.cmake)
+include(3rdparty/pico-extras/pico_sdk_import.cmake)
+include(3rdparty/pico-extras/external/pico_extras_import.cmake)
 
 set(PROJECT i2c_puppet)
 
@@ -52,6 +53,7 @@ target_link_libraries(${FLASHLOADER} PRIVATE
         hardware_clocks
         hardware_pll
         hardware_dma
+        hardware_sleep
         pico_platform
         pico_standard_link
         pico_divider
