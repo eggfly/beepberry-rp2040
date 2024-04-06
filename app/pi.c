@@ -6,7 +6,12 @@
 #include "hardware/adc.h"
 #include <hardware/pwm.h>
 
+#include "hardware/clocks.h"
+#include "hardware/rosc.h"
+#include "hardware/structs/scb.h"
+
 #include <pico/stdlib.h>
+#include <pico/sleep.h>
 
 #define LED_FLASH_CYCLE_MS 3000
 #define LED_FLASH_ON_MS 200
@@ -91,18 +96,24 @@ void pi_schedule_power_on(uint32_t ms)
 	g_power_on_alarm = add_alarm_in_ms(ms, pi_power_on_alarm_callback, NULL, true);
 }
 
-static int64_t pi_power_off_alarm_callback(alarm_id_t _, void* __)
+static int64_t pi_power_off_alarm_callback(alarm_id_t _, void* u8_ptr_dormant)
 {
+	uint8_t *dormant_flag = (uint8_t*)u8_ptr_dormant;
+
 	if (g_power_off_alarm < 0) {
 		return 0;
 	}
 
 	pi_power_off();
+	if (dormant_flag != NULL) {
+		*dormant_flag = 1;
+		dormant_until_power_key();
+	}
 
 	return 0;
 }
 
-void pi_schedule_power_off(uint32_t ms)
+static void pi_schedule_power_off(uint32_t ms, uint8_t* dormant_flag)
 {
 	// Cancel existing alarm if scheduled
 	if (g_power_off_alarm >= 0) {
@@ -111,7 +122,18 @@ void pi_schedule_power_off(uint32_t ms)
 	}
 
 	// Schedule new alarm
-	g_power_off_alarm = add_alarm_in_ms(ms, pi_power_off_alarm_callback, NULL, true);
+	g_power_off_alarm = add_alarm_in_ms(ms, pi_power_off_alarm_callback,
+		(void*)dormant_flag, true);
+}
+
+void pi_schedule_power_off_live(uint32_t ms)
+{
+	pi_schedule_power_off(ms, NULL);
+}
+
+void pi_schedule_power_off_dormant(uint32_t ms, uint8_t* dormant_flag)
+{
+	pi_schedule_power_off(ms, dormant_flag);
 }
 
 void pi_cancel_power_alarms()
@@ -170,7 +192,7 @@ void led_init(void)
 	// Default off
 	g_led_state.setting = LED_SET_OFF;
 	g_led_flash_state.setting = LED_SET_OFF;
-	led_sync(false, 0, 0, 0);
+	led_sync(true, 0, 0, 0);
 }
 
 static int64_t pi_led_flash_alarm_callback(alarm_id_t _, void* __)
@@ -259,4 +281,105 @@ void led_set(struct led_state const* state)
 	} else {
 		led_sync((state->setting == LED_SET_ON), state->r, state->g,  state->b);
 	}
+}
+
+struct sleep_state
+{
+	uint8_t keyboard_backlight;
+	struct led_state led_state;
+	uint scb_orig, clock0_orig, clock1_orig;
+};
+
+static void sleep_prepare(struct sleep_state* ss)
+{
+	// Save backlight and LED state
+	ss->keyboard_backlight = reg_get_value(REG_ID_BKL);
+	ss->led_state = g_led_state;
+
+	// Save existing clock states
+	ss->scb_orig = scb_hw->scr;
+	ss->clock0_orig = clocks_hw->sleep_en0;
+	ss->clock1_orig = clocks_hw->sleep_en1;
+
+	// Clear LED and backlight
+	reg_set_value(REG_ID_BKL, 0);
+	led_sync(true, 0, 0, 0);
+}
+
+static void sleep_resume(struct sleep_state const* ss)
+{
+	// Recover from sleep
+	rosc_write(&rosc_hw->ctrl, ROSC_CTRL_ENABLE_BITS);
+	scb_hw->scr = ss->scb_orig;
+	clocks_hw->sleep_en0 = ss->clock0_orig;
+	clocks_hw->sleep_en1 = ss->clock1_orig;
+	clocks_init();
+
+	// Restore LED and keyboard states
+	led_set(&ss->led_state);
+	reg_set_value(REG_ID_BKL, ss->keyboard_backlight);
+}
+
+void dormant_until_power_key()
+{
+	datetime_t t;
+	struct sleep_state ss;
+
+	// Invalidate RTC
+	t.year = 1970;
+	t.month = 1;
+	t.day = 1;
+	t.dotw = 4;
+	t.hour = 0;
+	t.min = 0;
+	t.sec = 0;
+
+	// Save clocks, LED, backlight
+	sleep_prepare(&ss);
+
+	// Sleep until power key is pressed
+	sleep_run_from_xosc();
+	sleep_goto_dormant_until_pin(4, 0, 0);
+
+	// Restore clocks, LED, backlight
+	sleep_resume(&ss);
+}
+
+static void sleep_callback(void)
+{}
+
+void dormant_seconds(int seconds)
+{
+	struct sleep_state ss;
+	datetime_t t;
+
+	// Save clocks, LED, backlight
+	sleep_prepare(&ss);
+
+	// Get datetime offset
+	rtc_get_datetime(&t);
+	t.sec += seconds;
+	while (t.sec >= 60) {
+		t.sec -= 60;
+		t.min += 1;
+	}
+	while (t.min >= 60) {
+		t.min -= 60;
+		t.hour += 1;
+	}
+	// May not work correctly around midnight...
+	while (t.hour >= 24) {
+		t.hour -= 24;
+		t.day += 1;
+		t.dotw = (t.dotw + 1) & 7;
+	}
+
+	sleep_run_from_xosc();
+	sleep_goto_sleep_until(&t, sleep_callback);
+
+	// Advance RTC
+	rtc_set_datetime(&t);
+
+	// Restore clocks, LED, backlight
+	sleep_resume(&ss);
 }

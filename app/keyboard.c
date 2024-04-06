@@ -68,6 +68,9 @@ static struct hold_key rightshift_hold_key;
 static struct hold_key alt_hold_key;
 static struct hold_key sym_hold_key;
 
+// Re-enter dormant status until Pi booted again
+static uint8_t reenter_dormancy = false;
+
 static bool transition_hold_key_state(struct hold_key* hold_key, bool const pressed)
 {
 	uint key_held_for;
@@ -146,13 +149,29 @@ static void handle_power_key_event(bool pressed)
 	}
 
 	// Normal press / release sends KEY_STOP
-	if ((power_hold_key.state == KEY_STATE_PRESSED)
-	 || (power_hold_key.state == KEY_STATE_RELEASED)) {
+	if (power_hold_key.state == KEY_STATE_PRESSED) {
 		keyboard_inject_event(KEY_STOP, power_hold_key.state);
+
+	} else if (power_hold_key.state == KEY_STATE_RELEASED) {
+
+		// Power button events will wake out of dormancy
+		// Dormancy should be retriggered until power key
+		// is held long enough to rewake Pi
+		if (reenter_dormancy) {
+			dormant_until_power_key();
+
+		// Send power key event
+		} else {
+			keyboard_inject_event(KEY_STOP, power_hold_key.state);
+		}
 
 	// Short press while driver unloaded powers Pi on
 	 } if (power_hold_key.state == KEY_STATE_HOLD) {
 
+		// Clear dormancy flag
+		reenter_dormancy = 0;
+
+		// Turn Pi back on
 		if (reg_get_value(REG_ID_DRIVER_STATE) == 0) {
 			pi_cancel_power_alarms();
 			pi_power_on(POWER_ON_BUTTON);
@@ -169,11 +188,11 @@ static void handle_power_key_event(bool pressed)
 		// If driver loaded, send power off
 		if (reg_get_value(REG_ID_DRIVER_STATE) > 0) {
 
-			// Schedule power off
+			// Schedule power off with dormancy
 			uint32_t shutdown_grace_ms = MAX(
 				reg_get_value(REG_ID_SHUTDOWN_GRACE) * 1000,
 				MINIMUM_SHUTDOWN_GRACE_MS);
-			pi_schedule_power_off(shutdown_grace_ms);
+			pi_schedule_power_off_dormant(shutdown_grace_ms, &reenter_dormancy);
 		}
 	}
 }

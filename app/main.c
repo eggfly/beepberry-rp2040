@@ -4,6 +4,10 @@
 
 #include <hardware/rtc.h>
 
+#include "hardware/clocks.h"
+#include "hardware/rosc.h"
+#include "hardware/structs/scb.h"
+
 #include "backlight.h"
 #include "debug.h"
 #include "gpioexp.h"
@@ -12,8 +16,11 @@
 #include "puppet_i2c.h"
 #include "reg.h"
 #include "touchpad.h"
-#include "usb.h"
 #include "pi.h"
+
+// https://github.com/micropython/micropython/blob/5114f2c1ea7c05fc7ab920299967595cfc5307de/ports/rp2/modmachine.c#L179
+// https://github.com/raspberrypi/pico-extras/issues/41
+#include "pico/sleep.h"
 
 // since the SDK doesn't support per-GPIO irq, we use this global irq and forward it
 static void gpio_irq(uint gpio, uint32_t events)
@@ -26,10 +33,7 @@ static void gpio_irq(uint gpio, uint32_t events)
 // TODO: Microphone
 int main(void)
 {
-	// The here order is important because it determines callback call order
-#ifdef HAVE_USB
-	usb_init();
-#endif
+	// This order is important because it determines callback call order
 
 #ifndef NDEBUG
 	debug_init();
@@ -55,7 +59,10 @@ int main(void)
 	gpio_set_irq_enabled_with_callback(0xFF, 0, true, &gpio_irq);
 
 	led_init();
+
 	pi_power_init();
+
+	dormant_until_power_key();
 
 	pi_power_on(POWER_ON_FW_INIT);
 

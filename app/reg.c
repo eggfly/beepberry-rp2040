@@ -220,7 +220,7 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 		keyboard_inject_power_key();
 
 		// Power off with grace time to give Pi time to shut down
-		pi_schedule_power_off(shutdown_grace_ms);
+		pi_schedule_power_off_live(shutdown_grace_ms);
 
 		// Schedule power on
 		pi_schedule_power_on(rewake_ms);
@@ -276,7 +276,7 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 				uint32_t shutdown_grace_ms = MAX(
 					reg_get_value(REG_ID_SHUTDOWN_GRACE) * 1000,
 					MINIMUM_SHUTDOWN_GRACE_MS);
-				pi_schedule_power_off(shutdown_grace_ms);
+				pi_schedule_power_off_live(shutdown_grace_ms);
 				add_alarm_in_ms(shutdown_grace_ms + 10,
 					update_commit_alarm_callback, NULL, true);
 			}
@@ -375,7 +375,7 @@ void reg_clear_bit(enum reg_id reg, uint8_t bit)
 void reg_init(void)
 {
 	reg_set_value(REG_ID_CFG, CFG_OVERFLOW_INT | CFG_KEY_INT | CFG_USE_MODS);
-	reg_set_value(REG_ID_BKL, 255);
+	reg_set_value(REG_ID_BKL, 128);
 	reg_set_value(REG_ID_DEB, 10);
 	reg_set_value(REG_ID_FRQ, 10);	// ms
 	reg_set_value(REG_ID_BK2, 255);
