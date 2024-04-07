@@ -76,6 +76,9 @@ enum reg_id
 #define CF2_USB_KEYB_ON		(1 << 1) // Should key events be sent over USB HID
 #define CF2_USB_MOUSE_ON	(1 << 2) // Should touch events be sent over USB HID
 // TODO? CF2_STICKY_MODS // Pressing and releasing a mod affects next key pressed
+#define CF2_AUTO_OFF        (1 << 3) // Automatically power off Pi and sleep
+// `shutdown grace` seconds after driver is unloaded
+// Supports power saving after running `shutdown` instead of using power key
 
 #define INT_OVERFLOW		(1 << 0)
 #define INT_CAPSLOCK		(1 << 1)
@@ -110,3 +113,5 @@ void reg_set_bit(enum reg_id reg, uint8_t bit);
 void reg_clear_bit(enum reg_id reg, uint8_t bit);
 
 void reg_init(void);
+
+uint32_t reg_get_shutdown_grace_ms();

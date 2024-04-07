@@ -66,7 +66,6 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 	case REG_ID_ADR:
 	case REG_ID_IND:
 	case REG_ID_CF2:
-	case REG_ID_DRIVER_STATE:
 	case REG_ID_SHUTDOWN_GRACE:
 	case REG_ID_TOUCHPAD_MIN_SQUAL:
 	{
@@ -206,9 +205,7 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 
 		// Get rewake and grace times in milliseconds
 		uint32_t rewake_ms = in_data * 60 * 1000;
-		uint32_t shutdown_grace_ms = MAX(
-			reg_get_value(REG_ID_SHUTDOWN_GRACE) * 1000,
-			MINIMUM_SHUTDOWN_GRACE_MS);
+		uint32_t shutdown_grace_ms = reg_get_shutdown_grace_ms();
 
 		// Check input time against shutdown grace time
 		// Plus some slop to allow for power cycling
@@ -220,7 +217,7 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 		keyboard_inject_power_key();
 
 		// Power off with grace time to give Pi time to shut down
-		pi_schedule_power_off_live(shutdown_grace_ms);
+		pi_schedule_power_off(0, shutdown_grace_ms, false /* live */);
 
 		// Schedule power on
 		pi_schedule_power_on(rewake_ms);
@@ -273,16 +270,36 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 				keyboard_inject_power_key();
 
 				// Power off with grace time to give Pi time to shut down
-				uint32_t shutdown_grace_ms = MAX(
-					reg_get_value(REG_ID_SHUTDOWN_GRACE) * 1000,
-					MINIMUM_SHUTDOWN_GRACE_MS);
-				pi_schedule_power_off_live(shutdown_grace_ms);
+				uint32_t shutdown_grace_ms = reg_get_shutdown_grace_ms();
+				pi_schedule_power_off(0, shutdown_grace_ms, false /* live */);
 				add_alarm_in_ms(shutdown_grace_ms + 10,
 					update_commit_alarm_callback, NULL, true);
 			}
 
 		} else {
 			out_buffer[0] = reg_get_value(REG_ID_UPDATE_DATA);
+			*out_len = sizeof(uint8_t);
+		}
+		break;
+	}
+
+	case REG_ID_DRIVER_STATE:
+	{
+		if (is_write) {
+			reg_set_value(reg, in_data);
+
+			// Driver unloaded, if auto off schedule a shutdown, power off, and sleep
+			if ((in_data == 0) && (reg_get_value(REG_ID_CF2) && CF2_AUTO_OFF)) {
+				pi_schedule_power_off(30*1000, reg_get_shutdown_grace_ms(),
+					true /* dormant */);
+
+			// Driver loaded, cancel shutdown and power off
+			} else if (in_data) {
+				pi_cancel_power_alarms();
+			}
+
+		} else {
+			out_buffer[0] = reg_get_value(reg);
 			*out_len = sizeof(uint8_t);
 		}
 		break;
@@ -375,7 +392,7 @@ void reg_clear_bit(enum reg_id reg, uint8_t bit)
 void reg_init(void)
 {
 	reg_set_value(REG_ID_CFG, CFG_OVERFLOW_INT | CFG_KEY_INT | CFG_USE_MODS);
-	reg_set_value(REG_ID_BKL, 128);
+	reg_set_value(REG_ID_BKL, 0x16);
 	reg_set_value(REG_ID_DEB, 10);
 	reg_set_value(REG_ID_FRQ, 10);	// ms
 	reg_set_value(REG_ID_BK2, 255);
@@ -383,7 +400,7 @@ void reg_init(void)
 	reg_set_value(REG_ID_HLD, 100);	// 10ms units
 	reg_set_value(REG_ID_ADR, 0x1F);
 	reg_set_value(REG_ID_IND, 1);	// ms
-	reg_set_value(REG_ID_CF2, CF2_TOUCH_INT | CF2_USB_KEYB_ON | CF2_USB_MOUSE_ON);
+	reg_set_value(REG_ID_CF2, CF2_TOUCH_INT | CF2_USB_KEYB_ON | CF2_USB_MOUSE_ON | CF2_AUTO_OFF);
 	reg_set_value(REG_ID_DRIVER_STATE, 0); // Driver not yet loaded
 
 	reg_set_value(REG_ID_SHUTDOWN_GRACE, 30);
@@ -392,3 +409,11 @@ void reg_init(void)
 
 	touchpad_add_touch_callback(&touch_callback);
 }
+
+
+uint32_t reg_get_shutdown_grace_ms()
+{
+	return MAX(reg_get_value(REG_ID_SHUTDOWN_GRACE) * 1000,
+		MINIMUM_SHUTDOWN_GRACE_MS);
+}
+

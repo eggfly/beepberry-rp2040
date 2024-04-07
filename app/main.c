@@ -55,14 +55,12 @@ int main(void)
 
 	puppet_i2c_init();
 
+	led_init();
+
 	// For now, the `gpio` param is ignored and all enabled GPIOs generate the irq
 	gpio_set_irq_enabled_with_callback(0xFF, 0, true, &gpio_irq);
 
-	led_init();
-
 	pi_power_init();
-
-	dormant_until_power_key();
 
 	pi_power_on(POWER_ON_FW_INIT);
 

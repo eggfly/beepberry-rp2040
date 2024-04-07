@@ -18,7 +18,9 @@
 
 // Globals
 alarm_id_t g_power_on_alarm = -1;
+alarm_id_t g_shutdown_alarm = -1;
 alarm_id_t g_power_off_alarm = -1;
+uint8_t g_dormant_reentry = 0;
 
 struct led_state g_led_state;
 struct led_state g_led_flash_state;
@@ -78,6 +80,10 @@ void pi_power_off(void)
 
 static int64_t pi_power_on_alarm_callback(alarm_id_t _, void* __)
 {
+	if (g_power_on_alarm < 0) {
+		return 0;
+	}
+
 	pi_cancel_power_alarms();
 	pi_power_on(POWER_ON_REWAKE);
 
@@ -96,58 +102,78 @@ void pi_schedule_power_on(uint32_t ms)
 	g_power_on_alarm = add_alarm_in_ms(ms, pi_power_on_alarm_callback, NULL, true);
 }
 
-static int64_t pi_power_off_alarm_callback(alarm_id_t _, void* u8_ptr_dormant)
+static int64_t pi_shutdown_alarm_callback(alarm_id_t _, void* __)
 {
-	uint8_t *dormant_flag = (uint8_t*)u8_ptr_dormant;
+	if (g_shutdown_alarm < 0) {
+		return 0;
+	}
+
+	keyboard_inject_power_key();
+
+	return 0;
+}
+
+static int64_t pi_power_off_alarm_callback(alarm_id_t _, void* int_dormant)
+{
+	uint8_t dormant = (int_dormant) ? 1 : 0;
 
 	if (g_power_off_alarm < 0) {
 		return 0;
 	}
 
 	pi_power_off();
-	if (dormant_flag != NULL) {
-		*dormant_flag = 1;
-		dormant_until_power_key();
+	if (dormant) {
+		g_dormant_reentry = dormant;
+		dormant_until_power_key_down();
 	}
 
 	return 0;
 }
 
-static void pi_schedule_power_off(uint32_t ms, uint8_t* dormant_flag)
+void pi_schedule_power_off(uint32_t shutdown_ms, uint32_t poweroff_ms, uint8_t dormant)
 {
-	// Cancel existing alarm if scheduled
-	if (g_power_off_alarm >= 0) {
-		cancel_alarm(g_power_off_alarm);
-		g_power_off_alarm = -1;
-	}
-
-	// Schedule new alarm
-	g_power_off_alarm = add_alarm_in_ms(ms, pi_power_off_alarm_callback,
-		(void*)dormant_flag, true);
-}
-
-void pi_schedule_power_off_live(uint32_t ms)
-{
-	pi_schedule_power_off(ms, NULL);
-}
-
-void pi_schedule_power_off_dormant(uint32_t ms, uint8_t* dormant_flag)
-{
-	pi_schedule_power_off(ms, dormant_flag);
-}
-
-void pi_cancel_power_alarms()
-{
-	// Cancel power on alarm
-	if (g_power_on_alarm >= 0) {
-		cancel_alarm(g_power_on_alarm);
-		g_power_on_alarm = -1;
+	// Cancel shutdown alarm
+	if (g_shutdown_alarm >= 0) {
+		cancel_alarm(g_shutdown_alarm);
+		g_shutdown_alarm = -1;
 	}
 
 	// Cancel power off alarm
 	if (g_power_off_alarm >= 0) {
 		cancel_alarm(g_power_off_alarm);
 		g_power_off_alarm = -1;
+	}
+
+	// Schedule shutdown alarm
+	if (shutdown_ms < 10) {
+		shutdown_ms = 10;
+	}
+	g_shutdown_alarm = add_alarm_in_ms(shutdown_ms,
+		pi_shutdown_alarm_callback, NULL, true);
+
+	// Schedule poweroff alarm
+	g_power_off_alarm = add_alarm_in_ms(shutdown_ms + poweroff_ms,
+		pi_power_off_alarm_callback, (void*)((dormant) ? 1 : 0), true);
+}
+
+void pi_cancel_power_alarms()
+{
+	// Cancel shutdown alarm
+	if (g_shutdown_alarm >= 0) {
+		cancel_alarm(g_shutdown_alarm);
+		g_shutdown_alarm = -1;
+	}
+
+	// Cancel power off alarm
+	if (g_power_off_alarm >= 0) {
+		cancel_alarm(g_power_off_alarm);
+		g_power_off_alarm = -1;
+	}
+
+	// Cancel power on alarm
+	if (g_power_on_alarm >= 0) {
+		cancel_alarm(g_power_on_alarm);
+		g_power_on_alarm = -1;
 	}
 }
 
@@ -320,7 +346,7 @@ static void sleep_resume(struct sleep_state const* ss)
 	reg_set_value(REG_ID_BKL, ss->keyboard_backlight);
 }
 
-void dormant_until_power_key()
+void dormant_until_power_key_down(void)
 {
 	datetime_t t;
 	struct sleep_state ss;
@@ -343,6 +369,16 @@ void dormant_until_power_key()
 
 	// Restore clocks, LED, backlight
 	sleep_resume(&ss);
+}
+
+void dormant_set_reentry_flag(uint8_t value)
+{
+	g_dormant_reentry = value;
+}
+
+uint8_t dormant_get_reentry_flag(void)
+{
+	return g_dormant_reentry;
 }
 
 static void sleep_callback(void)

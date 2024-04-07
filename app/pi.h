@@ -17,8 +17,7 @@ void pi_power_on(enum power_on_reason reason);
 void pi_power_off(void);
 
 void pi_schedule_power_on(uint32_t ms);
-void pi_schedule_power_off_live(uint32_t ms);
-void pi_schedule_power_off_dormant(uint32_t ms, uint8_t* dormant_flag);
+void pi_schedule_power_off(uint32_t shutdown_ms, uint32_t poweroff_ms, uint8_t dormant);
 void pi_cancel_power_alarms();
 
 enum led_setting
@@ -38,4 +37,6 @@ struct led_state
 void led_init(void);
 void led_set(struct led_state const* state);
 
-void dormant_until_power_key();
+void dormant_until_power_key_down(void);
+void dormant_set_reentry_flag(uint8_t value);
+uint8_t dormant_get_reentry_flag(void);
