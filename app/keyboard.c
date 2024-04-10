@@ -147,7 +147,10 @@ static void handle_power_key_event(bool pressed)
 
 	// Normal press / release sends KEY_STOP
 	if (power_hold_key.state == KEY_STATE_PRESSED) {
-		keyboard_inject_event(KEY_STOP, power_hold_key.state);
+
+		if (reg_get_value(REG_ID_DRIVER_STATE) > 0) {
+			keyboard_inject_event(KEY_STOP, power_hold_key.state);
+		}
 
 	} else if (power_hold_key.state == KEY_STATE_RELEASED) {
 
@@ -158,12 +161,12 @@ static void handle_power_key_event(bool pressed)
 			dormant_until_power_key_down();
 
 		// Send power key event
-		} else {
+		} else if (reg_get_value(REG_ID_DRIVER_STATE) > 0) {
 			keyboard_inject_event(KEY_STOP, power_hold_key.state);
 		}
 
 	// Short press while driver unloaded powers Pi on
-	 } if (power_hold_key.state == KEY_STATE_HOLD) {
+	} else if (power_hold_key.state == KEY_STATE_HOLD) {
 
 		// Turn Pi back on
 		if (reg_get_value(REG_ID_DRIVER_STATE) == 0) {
@@ -173,7 +176,7 @@ static void handle_power_key_event(bool pressed)
 
 			// Cancel all pending alarms and boot
 			pi_cancel_power_alarms();
-			pi_power_on(POWER_ON_BUTTON);
+			pi_reboot(POWER_ON_BUTTON);
 
 		// Send power short hold event
 		} else {
@@ -182,7 +185,10 @@ static void handle_power_key_event(bool pressed)
 
 	// Long hold sends KEY_POWER
 	} else if (power_hold_key.state == KEY_STATE_LONG_HOLD) {
-		keyboard_inject_power_key();
+
+		if (reg_get_value(REG_ID_DRIVER_STATE) > 0) {
+			keyboard_inject_power_key();
+		}
 
 		// Schedule power off this many seconds after shutting down
 		uint32_t shutdown_grace_ms = MAX(

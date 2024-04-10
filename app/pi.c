@@ -78,16 +78,31 @@ void pi_power_off(void)
 	g_pi_state = PI_STATE_OFF;
 }
 
-static int64_t pi_power_on_alarm_callback(alarm_id_t _, void* __)
+static int64_t pi_power_on_alarm_callback(alarm_id_t _, void* enum_reason)
 {
 	if (g_power_on_alarm < 0) {
 		return 0;
 	}
 
 	pi_cancel_power_alarms();
-	pi_power_on(POWER_ON_REWAKE);
+	pi_power_on((enum power_on_reason)enum_reason);
 
 	return 0;
+}
+
+void pi_reboot(enum power_on_reason reason)
+{
+	// Turn off Pi
+	pi_power_off();
+
+	// Cancel existing alarm if scheduled
+	if (g_power_on_alarm >= 0) {
+		cancel_alarm(g_power_on_alarm);
+		g_power_on_alarm = -1;
+	}
+
+	// Schedule new alarm aftel allowing time for Pi to power off
+	g_power_on_alarm = add_alarm_in_ms(500, pi_power_on_alarm_callback, (void*)reason, true);
 }
 
 void pi_schedule_power_on(uint32_t ms)
@@ -99,7 +114,8 @@ void pi_schedule_power_on(uint32_t ms)
 	}
 
 	// Schedule new alarm
-	g_power_on_alarm = add_alarm_in_ms(ms, pi_power_on_alarm_callback, NULL, true);
+	g_power_on_alarm = add_alarm_in_ms(ms, pi_power_on_alarm_callback,
+		(void*)POWER_ON_REWAKE, true);
 }
 
 static int64_t pi_shutdown_alarm_callback(alarm_id_t _, void* __)

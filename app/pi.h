@@ -15,6 +15,7 @@ enum power_on_reason
 void pi_power_init(void);
 void pi_power_on(enum power_on_reason reason);
 void pi_power_off(void);
+void pi_reboot(enum power_on_reason reason);
 
 void pi_schedule_power_on(uint32_t ms);
 void pi_schedule_power_off(uint32_t shutdown_ms, uint32_t poweroff_ms, uint8_t dormant);
