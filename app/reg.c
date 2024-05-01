@@ -400,7 +400,7 @@ void reg_init(void)
 	reg_set_value(REG_ID_HLD, 100);	// 10ms units
 	reg_set_value(REG_ID_ADR, 0x1F);
 	reg_set_value(REG_ID_IND, 1);	// ms
-	reg_set_value(REG_ID_CF2, CF2_TOUCH_INT);
+	reg_set_value(REG_ID_CF2, 0);
 	reg_set_value(REG_ID_DRIVER_STATE, 0); // Driver not yet loaded
 
 	reg_set_value(REG_ID_SHUTDOWN_GRACE, 30);
