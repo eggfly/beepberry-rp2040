@@ -3,6 +3,7 @@
 #include "keyboard.h"
 #include "gpioexp.h"
 #include "backlight.h"
+#include "fifo.h"
 #include "hardware/adc.h"
 #include <hardware/pwm.h>
 
@@ -56,6 +57,9 @@ void pi_power_on(enum power_on_reason reason)
 
 	gpio_put(PIN_PI_PWR, 1);
 	g_pi_state = PI_STATE_ON;
+
+	// Clear any input queued while Pi was off
+	fifo_flush();
 
 	// LED green while booting until driver loaded
 	state.setting = LED_SET_ON;

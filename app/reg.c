@@ -296,6 +296,9 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 			// Driver loaded, cancel shutdown and power off
 			} else if (in_data) {
 				pi_cancel_power_alarms();
+
+				// Clear any input queued while driver was unloaded
+				fifo_flush();
 			}
 
 		} else {
