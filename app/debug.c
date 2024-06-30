@@ -4,7 +4,6 @@
 #include "gpioexp.h"
 #include "keyboard.h"
 #include "reg.h"
-#include "touchpad.h"
 #include "usb.h"
 
 #include <pico/mutex.h>
@@ -20,12 +19,6 @@ static void key_cb(uint8_t key, enum key_state state)
 	printf("key: 0x%02X/%d/%c, state: %d\r\n", key, key, key, state);
 }
 static struct key_callback key_callback = { .func = key_cb };
-
-static void touch_cb(int8_t x, int8_t y)
-{
-	printf("%s: x: %d, y: %d !\r\n", __func__, x, y);
-}
-static struct touch_callback touch_callback = { .func = touch_cb };
 
 static void gpioexp_cb(uint8_t gpio, uint8_t gpio_idx)
 {
@@ -90,8 +83,6 @@ void debug_init(void)
 	printf("I2C Puppet SW v%d.%d\r\n", VERSION_MAJOR, VERSION_MINOR);
 
 	keyboard_add_key_callback(&key_callback);
-
-	touchpad_add_touch_callback(&touch_callback);
 
 	gpioexp_add_int_callback(&gpioexp_callback);
 }

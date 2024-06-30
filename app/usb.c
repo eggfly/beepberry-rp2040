@@ -1,8 +1,6 @@
 #include "usb.h"
 
-#include "backlight.h"
 #include "keyboard.h"
-#include "touchpad.h"
 #include "reg.h"
 
 #include <hardware/irq.h>
@@ -15,16 +13,10 @@
 static struct
 {
 	mutex_t mutex;
-	bool mouse_moved;
-	uint8_t mouse_btn;
 
 	uint8_t write_buffer[2];
 	uint8_t write_len;
 } self;
-
-// TODO: What about Ctrl?
-// TODO: What should L1, L2, R1, R2 do
-// TODO: Should touch send arrow keys as an option?
 
 static void low_priority_worker_irq(void)
 {
@@ -59,35 +51,8 @@ static void key_cb(uint8_t key, enum key_state state)
 			tud_hid_n_keyboard_report(USB_ITF_KEYBOARD, 0, modifiers, keycode);
 		}
 	}
-
-	if (tud_hid_n_ready(USB_ITF_MOUSE) && reg_is_bit_set(REG_ID_CF2, CF2_USB_MOUSE_ON)) {
-		if (key == KEY_COMPOSE) {
-			if (state == KEY_STATE_PRESSED) {
-				self.mouse_btn = MOUSE_BUTTON_LEFT;
-				self.mouse_moved = false;
-				tud_hid_n_mouse_report(USB_ITF_MOUSE, 0, MOUSE_BUTTON_LEFT, 0, 0, 0, 0);
-			} else if ((state == KEY_STATE_HOLD) && !self.mouse_moved) {
-				self.mouse_btn = MOUSE_BUTTON_RIGHT;
-				tud_hid_n_mouse_report(USB_ITF_MOUSE, 0, MOUSE_BUTTON_RIGHT, 0, 0, 0, 0);
-			} else if (state == KEY_STATE_RELEASED) {
-				self.mouse_btn = 0x00;
-				tud_hid_n_mouse_report(USB_ITF_MOUSE, 0, 0x00, 0, 0, 0, 0);
-			}
-		}
-	}
 }
 static struct key_callback key_callback = { .func = key_cb };
-
-static void touch_cb(int8_t x, int8_t y)
-{
-	if (!tud_hid_n_ready(USB_ITF_MOUSE) || !reg_is_bit_set(REG_ID_CF2, CF2_USB_MOUSE_ON))
-		return;
-
-	self.mouse_moved = true;
-
-	tud_hid_n_mouse_report(USB_ITF_MOUSE, 0, self.mouse_btn, x, y, 0, 0);
-}
-static struct touch_callback touch_callback = { .func = touch_cb };
 
 uint16_t tud_hid_get_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t report_type, uint8_t *buffer, uint16_t reqlen)
 {
@@ -140,8 +105,6 @@ void usb_init(void)
 	tusb_init();
 
 	keyboard_add_key_callback(&key_callback);
-
-	touchpad_add_touch_callback(&touch_callback);
 
 	// create a new interrupt that calls tud_task, and trigger that interrupt from a timer
 	irq_set_exclusive_handler(USB_LOW_PRIORITY_IRQ, low_priority_worker_irq);

@@ -1,7 +1,6 @@
 set(CMAKE_C_STANDARD 11)
 
 add_executable(firmware
-	backlight.c
 	debug.c
 	fifo.c
 	gpioexp.c
@@ -10,11 +9,8 @@ add_executable(firmware
 	keyboard.c
 	main.c
 	reg.c
-	touchpad.c
 	usb.c
 	usb_descriptors.c
-	pi.c
-	rtc.c
 	update.c
 )
 

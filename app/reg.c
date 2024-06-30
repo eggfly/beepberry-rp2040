@@ -1,15 +1,11 @@
 #include "reg.h"
 
 #include "app_config.h"
-#include "backlight.h"
 #include "fifo.h"
 #include "gpioexp.h"
 #include "puppet_i2c.h"
 #include "keyboard.h"
-#include "touchpad.h"
-#include "pi.h"
 #include "hardware/adc.h"
-#include "rtc.h"
 #include "update.h"
 
 #include <pico/stdlib.h>
@@ -23,17 +19,6 @@ static struct
 {
 	uint8_t regs[REG_ID_LAST];
 } self;
-
-static void touch_cb(int8_t x, int8_t y)
-{
-	const int16_t dx = (int8_t)self.regs[REG_ID_TOX] + x;
-	const int16_t dy = (int8_t)self.regs[REG_ID_TOY] + y;
-
-	// bind to -128 to 127
-	self.regs[REG_ID_TOX] = MAX(INT8_MIN, MIN(dx, INT8_MAX));
-	self.regs[REG_ID_TOY] = MAX(INT8_MIN, MIN(dy, INT8_MAX));
-}
-static struct touch_callback touch_callback = { .func = touch_cb };
 
 static int64_t update_commit_alarm_callback(alarm_id_t _, void* __)
 {
@@ -58,25 +43,17 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 	case REG_ID_INT:
 	case REG_ID_DEB:
 	case REG_ID_FRQ:
-	case REG_ID_BKL:
-	case REG_ID_BK2:
 	case REG_ID_GIC:
 	case REG_ID_GIN:
 	case REG_ID_HLD:
 	case REG_ID_ADR:
 	case REG_ID_IND:
 	case REG_ID_CF2:
-	case REG_ID_SHUTDOWN_GRACE:
-	case REG_ID_TOUCHPAD_MIN_SQUAL:
 	{
 		if (is_write) {
 			reg_set_value(reg, in_data);
 
 			switch (reg) {
-			case REG_ID_BKL:
-			case REG_ID_BK2:
-				backlight_sync();
-				break;
 
 			case REG_ID_ADR:
 				puppet_i2c_sync_address();
@@ -116,30 +93,6 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 		break;
 	}
 
-	case REG_ID_TOUCHPAD_REG:
-		if (is_write) {
-			reg_set_value(reg, in_data);
-		}
-		break;
-
-	case REG_ID_TOUCHPAD_VAL:
-		if (is_write) {
-			touchpad_write_i2c_u8(reg_get_value(REG_ID_TOUCHPAD_REG), in_data);
-		} else {
-			out_buffer[0] = touchpad_read_i2c_u8(reg_get_value(REG_ID_TOUCHPAD_REG));
-			*out_len = sizeof(uint8_t);
-		}
-		break;
-
-	case REG_ID_TOUCHPAD_LED:
-		if (is_write) {
-			touchpad_set_led_power(in_data);
-			reg_set_value(reg, in_data);
-		} else {
-			out_buffer[0] = reg_get_value(reg);
-			*out_len = sizeof(uint8_t);
-		}
-
 	case REG_ID_GIO: // gpio value
 	{
 		if (is_write) {
@@ -148,105 +101,6 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 			out_buffer[0] = gpioexp_get_value();
 			*out_len = sizeof(uint8_t);
 		}
-		break;
-	}
-
-	// RGB LED registers
-	case REG_ID_LED_R:
-	case REG_ID_LED_G:
-	case REG_ID_LED_B:
-	{
-		if (is_write) {
-			reg_set_value(reg, in_data);
-		} else {
-			out_buffer[0] = reg_get_value(reg);
-			*out_len = sizeof(uint8_t);
-		}
-		break;
-	}
-
-	case REG_ID_LED:
-	{
-		if (is_write) {
-			reg_set_value(reg, in_data);
-			struct led_state state;
-			state.setting = (enum led_setting)in_data;
-			state.r = reg_get_value(REG_ID_LED_R);
-			state.g = reg_get_value(REG_ID_LED_G);
-			state.b = reg_get_value(REG_ID_LED_B);
-			led_set(&state);
-		} else {
-			out_buffer[0] = reg_get_value(reg);
-			*out_len = sizeof(uint8_t);
-		}
-		break;
-	}
-
-	// Rewake on timer
-	case REG_ID_REWAKE_MINS:
-	{
-		// Value of zero will cancel alarms
-		if (in_data == 0) {
-			pi_cancel_power_alarms();
-
-			// Reset startup reason if in rewake
-			if (reg_get_value(REG_ID_STARTUP_REASON) == POWER_ON_REWAKE) {
-				reg_set_value(REG_ID_STARTUP_REASON, POWER_ON_REWAKE_CANCELED);
-			}
-
-			break;
-		}
-
-		// Only run this if driver was loaded
-		// Otherwise, OS won't get the power key event
-		if (reg_get_value(REG_ID_DRIVER_STATE) == 0) {
-			break;
-		}
-
-		// Get rewake and grace times in milliseconds
-		uint32_t rewake_ms = in_data * 60 * 1000;
-		uint32_t shutdown_grace_ms = reg_get_shutdown_grace_ms();
-
-		// Check input time against shutdown grace time
-		// Plus some slop to allow for power cycling
-		if (rewake_ms < (shutdown_grace_ms + 5000)) {
-			break;
-		}
-
-		// Send shutdown signal to OS
-		keyboard_inject_power_key();
-
-		// Power off with grace time to give Pi time to shut down
-		pi_schedule_power_off(0, shutdown_grace_ms, false /* live */);
-
-		// Schedule power on
-		pi_schedule_power_on(rewake_ms);
-
-		break;
-	}
-
-	// Real time clock
-	case REG_ID_RTC_SEC:
-	case REG_ID_RTC_MIN:
-	case REG_ID_RTC_HOUR:
-	case REG_ID_RTC_MDAY:
-	case REG_ID_RTC_MON:
-	case REG_ID_RTC_YEAR:
-	{
-		if (is_write) {
-			reg_set_value(reg, in_data);
-		} else {
-			out_buffer[0] = rtc_get(reg);
-			*out_len = sizeof(uint8_t);
-		}
-		break;
-	}
-
-	case REG_ID_RTC_COMMIT:
-	{
-		rtc_set(reg_get_value(REG_ID_RTC_YEAR), reg_get_value(REG_ID_RTC_MON),
-			reg_get_value(REG_ID_RTC_MDAY), reg_get_value(REG_ID_RTC_HOUR),
-			reg_get_value(REG_ID_RTC_MIN), reg_get_value(REG_ID_RTC_SEC));
 		break;
 	}
 
@@ -263,17 +117,9 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 
 			// Update read successfully
 			} else {
-
 				reg_set_value(REG_ID_UPDATE_DATA, UPDATE_OFF);
 
-				// Send shutdown signal to OS
-				keyboard_inject_power_key();
-
-				// Power off with grace time to give Pi time to shut down
-				uint32_t shutdown_grace_ms = reg_get_shutdown_grace_ms();
-				pi_schedule_power_off(0, shutdown_grace_ms, false /* live */);
-				add_alarm_in_ms(shutdown_grace_ms + 10,
-					update_commit_alarm_callback, NULL, true);
+				update_commit_and_reboot();
 			}
 
 		} else {
@@ -288,14 +134,8 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 		if (is_write) {
 			reg_set_value(reg, in_data);
 
-			// Driver unloaded, if auto off schedule a shutdown, power off, and sleep
-			if ((in_data == 0) && (reg_get_value(REG_ID_CF2) && CF2_AUTO_OFF)) {
-				pi_schedule_power_off(30*1000, reg_get_shutdown_grace_ms(),
-					true /* dormant */);
-
-			// Driver loaded, cancel shutdown and power off
-			} else if (in_data) {
-				pi_cancel_power_alarms();
+			// Driver loaded
+			if (in_data) {
 
 				// Clear any input queued while driver was unloaded
 				fifo_flush();
@@ -309,24 +149,9 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 	}
 
 	// read-only registers
-	case REG_ID_TOX:
-	case REG_ID_TOY:
-		out_buffer[0] = reg_get_value(reg);
-		*out_len = sizeof(uint8_t);
-
-		reg_set_value(reg, 0);
-		break;
-
 	case REG_ID_VER:
 		out_buffer[0] = VER_VAL;
 		*out_len = sizeof(uint8_t);
-		break;
-
-	case REG_ID_ADC:
-		adc_value = adc_read();
-		out_buffer[0] = (uint8_t)(adc_value & 0x00FF);
-		out_buffer[1] = (uint8_t)((adc_value & 0xFF00) >> 8);
-		*out_len = sizeof(uint8_t) * 2;
 		break;
 
 	case REG_ID_KEY:
@@ -346,11 +171,6 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 
 	case REG_ID_RST:
 		NVIC_SystemReset();
-		break;
-
-	case REG_ID_STARTUP_REASON:
-		out_buffer[0] = reg_get_value(reg);
-		*out_len = sizeof(uint8_t);
 		break;
 	}
 }
@@ -395,28 +215,13 @@ void reg_clear_bit(enum reg_id reg, uint8_t bit)
 void reg_init(void)
 {
 	reg_set_value(REG_ID_CFG, CFG_OVERFLOW_INT | CFG_KEY_INT | CFG_USE_MODS);
-	reg_set_value(REG_ID_BKL, 0x16);
 	reg_set_value(REG_ID_DEB, 10);
 	reg_set_value(REG_ID_FRQ, 10);	// ms
-	reg_set_value(REG_ID_BK2, 255);
 	reg_set_value(REG_ID_PUD, 0xFF);
 	reg_set_value(REG_ID_HLD, 100);	// 10ms units
 	reg_set_value(REG_ID_ADR, 0x1F);
 	reg_set_value(REG_ID_IND, 1);	// ms
 	reg_set_value(REG_ID_CF2, 0);
 	reg_set_value(REG_ID_DRIVER_STATE, 0); // Driver not yet loaded
-
-	reg_set_value(REG_ID_SHUTDOWN_GRACE, 30);
-
-	reg_set_value(REG_ID_TOUCHPAD_MIN_SQUAL, 16);
-
-	touchpad_add_touch_callback(&touch_callback);
-}
-
-
-uint32_t reg_get_shutdown_grace_ms()
-{
-	return MAX(reg_get_value(REG_ID_SHUTDOWN_GRACE) * 1000,
-		MINIMUM_SHUTDOWN_GRACE_MS);
 }
 

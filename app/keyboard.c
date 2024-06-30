@@ -2,7 +2,6 @@
 #include "fifo.h"
 #include "keyboard.h"
 #include "reg.h"
-#include "pi.h"
 
 #include <pico/stdlib.h>
 
@@ -44,172 +43,7 @@ static const uint8_t kbd_entries[NUM_OF_ROWS][NUM_OF_COLS] =
 };
 static bool kbd_pressed[NUM_OF_ROWS][NUM_OF_COLS] = {};
 
-#if NUM_OF_BTNS > 0
-
-// Call end key mapped to GPIO 4
-static const char btn_entries[NUM_OF_BTNS] = { KEY_POWER };
-static const uint8_t btn_pins[NUM_OF_BTNS] = { 4 };
-#endif
-
 #pragma GCC diagnostic pop
-
-struct hold_key
-{
-	uint8_t keycode, row, col;
-	enum key_state state;
-	uint32_t hold_start_time;
-};
-
-static struct hold_key call_hold_key;
-static struct hold_key berry_hold_key;
-static struct hold_key power_hold_key;
-static struct hold_key leftshift_hold_key;
-static struct hold_key rightshift_hold_key;
-static struct hold_key alt_hold_key;
-static struct hold_key sym_hold_key;
-
-static bool transition_hold_key_state(struct hold_key* hold_key, bool const pressed)
-{
-	uint key_held_for;
-
-	switch (hold_key->state) {
-
-		// Idle -> Pressed
-		case KEY_STATE_IDLE:
-			if (pressed) {
-				hold_key->state = KEY_STATE_PRESSED;
-
-				// Track hold time for transitioning to Hold and Long Hold states
-				hold_key->hold_start_time = to_ms_since_boot(get_absolute_time());
-
-				return true;
-			}
-			break;
-
-		// Pressed -> Hold | Released
-		case KEY_STATE_PRESSED:
-			key_held_for = to_ms_since_boot(get_absolute_time())
-				- hold_key->hold_start_time;
-			if (key_held_for > (reg_get_value(REG_ID_HLD) * 10)) {
-				hold_key->state = KEY_STATE_HOLD;
-				return true;
-
-			} else if (!pressed) {
-				hold_key->state = KEY_STATE_RELEASED;
-				return true;
-			}
-			break;
-
-		// Hold -> Released | Long Hold
-		case KEY_STATE_HOLD:
-			if (!pressed) {
-				hold_key->state = KEY_STATE_RELEASED;
-				return true;
-
-			} else {
-
-				// Check for long hold time
-				key_held_for = to_ms_since_boot(get_absolute_time())
-					- hold_key->hold_start_time;
-				if (key_held_for > LONG_HOLD_MS) {
-					hold_key->state = KEY_STATE_LONG_HOLD;
-					return true;
-				}
-			}
-			break;
-
-		// Long Hold -> Released
-		case KEY_STATE_LONG_HOLD:
-			if (!pressed) {
-				hold_key->state = KEY_STATE_RELEASED;
-				return true;
-			}
-
-			break;
-
-		// Released -> Idle
-		case KEY_STATE_RELEASED:
-			hold_key->state = KEY_STATE_IDLE;
-			return true;
-	}
-
-	return false;
-}
-
-static void handle_power_key_event(bool pressed)
-{
-	// Transition state
-	if (!transition_hold_key_state(&power_hold_key, pressed)) {
-
-		// State not updated, return
-		return;
-	}
-
-	// Normal press / release sends KEY_STOP
-	if (power_hold_key.state == KEY_STATE_PRESSED) {
-
-		if (reg_get_value(REG_ID_DRIVER_STATE) > 0) {
-			keyboard_inject_event(KEY_STOP, power_hold_key.state);
-		}
-
-	} else if (power_hold_key.state == KEY_STATE_RELEASED) {
-
-		// Power button events will wake out of dormancy
-		// Dormancy should be retriggered until power key
-		// is held long enough to rewake Pi
-		if (dormant_get_reentry_flag()) {
-			dormant_until_power_key_down();
-
-		// Send power key event
-		} else if (reg_get_value(REG_ID_DRIVER_STATE) > 0) {
-			keyboard_inject_event(KEY_STOP, power_hold_key.state);
-		}
-
-	// Short press while driver unloaded powers Pi on
-	} else if (power_hold_key.state == KEY_STATE_HOLD) {
-
-		// Turn Pi back on
-		if (reg_get_value(REG_ID_DRIVER_STATE) == 0) {
-
-			// Clear dormancy flag
-			dormant_set_reentry_flag(false);
-
-			// Cancel all pending alarms and boot
-			pi_cancel_power_alarms();
-			pi_reboot(POWER_ON_BUTTON);
-
-		// Send power short hold event
-		} else {
-			keyboard_inject_event(KEY_STOP, power_hold_key.state);
-		}
-
-	// Long hold sends KEY_POWER
-	} else if (power_hold_key.state == KEY_STATE_LONG_HOLD) {
-
-		if (reg_get_value(REG_ID_DRIVER_STATE) > 0) {
-			keyboard_inject_power_key();
-		}
-
-		// Schedule power off this many seconds after shutting down
-		uint32_t shutdown_grace_ms = MAX(
-			reg_get_value(REG_ID_SHUTDOWN_GRACE) * 1000,
-			MINIMUM_SHUTDOWN_GRACE_MS);
-		pi_schedule_power_off(0 /* shutdown immediately */, shutdown_grace_ms,
-			true /* dormant */);
-	}
-}
-
-static void handle_hold_key_event(struct hold_key* hold_key)
-{
-	bool pressed = kbd_pressed[hold_key->row][hold_key->col];
-
-	// Transition state
-	if (!transition_hold_key_state(hold_key, pressed)) {
-		return;
-	}
-
-	keyboard_inject_event(hold_key->keycode, hold_key->state);
-}
 
 static void handle_key_event(uint r, uint c, bool pressed)
 {
@@ -254,21 +88,6 @@ static int64_t timer_task(alarm_id_t id, void *user_data)
 		gpio_set_dir(col_pins[c], GPIO_IN);
 	}
 
-	// Handle modifier hold keys
-	handle_hold_key_event(&call_hold_key);
-	handle_hold_key_event(&berry_hold_key);
-	handle_hold_key_event(&leftshift_hold_key);
-	handle_hold_key_event(&rightshift_hold_key);
-	handle_hold_key_event(&alt_hold_key);
-	handle_hold_key_event(&sym_hold_key);
-
-#if NUM_OF_BTNS > 0
-	for (i = 0; i < NUM_OF_BTNS; i++) {
-		pressed = (gpio_get(btn_pins[i]) == 0);
-		handle_power_key_event(pressed);
-	}
-#endif
-
 	// negative value means interval since last alarm time
 	return -(reg_get_value(REG_ID_FRQ) * 1000);
 }
@@ -294,12 +113,6 @@ void keyboard_inject_event(uint8_t key, enum key_state state)
 		cb->func(key, state);
 		cb = cb->next;
 	}
-}
-
-void keyboard_inject_power_key()
-{
-	keyboard_inject_event(KEY_POWER, KEY_STATE_PRESSED);
-	keyboard_inject_event(KEY_POWER, KEY_STATE_RELEASED);
 }
 
 void keyboard_add_key_callback(struct key_callback *callback)
@@ -359,50 +172,6 @@ void keyboard_init(void)
 		gpio_init(col_pins[i]);
 		gpio_set_dir(col_pins[i], GPIO_IN);
 	}
-
-	// GPIO buttons
-#if NUM_OF_BTNS > 0
-	for(i = 0; i < NUM_OF_BTNS; ++i) {
-		gpio_init(btn_pins[i]);
-		gpio_pull_up(btn_pins[i]);
-		gpio_set_dir(btn_pins[i], GPIO_IN);
-	}
-#endif
-
-	// Holdable modfiier keys
-
-	call_hold_key.keycode = KEY_OPEN;
-	call_hold_key.row = 2;
-	call_hold_key.col = 0;
-	call_hold_key.state = KEY_STATE_IDLE;
-
-	berry_hold_key.keycode = KEY_PROPS;
-	berry_hold_key.row = 4;
-	berry_hold_key.col = 0;
-	berry_hold_key.state = KEY_STATE_IDLE;
-
-	power_hold_key.keycode = KEY_POWER;
-	power_hold_key.state = KEY_STATE_IDLE;
-
-	leftshift_hold_key.keycode = KEY_LEFTSHIFT;
-	leftshift_hold_key.row = 2;
-	leftshift_hold_key.col = 3;
-	leftshift_hold_key.state = KEY_STATE_IDLE;
-
-	rightshift_hold_key.keycode = KEY_RIGHTSHIFT;
-	rightshift_hold_key.row = 6;
-	rightshift_hold_key.col = 2;
-	rightshift_hold_key.state = KEY_STATE_IDLE;
-
-	alt_hold_key.keycode = KEY_LEFTALT;
-	alt_hold_key.row = 5;
-	alt_hold_key.col = 1;
-	alt_hold_key.state = KEY_STATE_IDLE;
-
-	sym_hold_key.keycode = KEY_RIGHTALT;
-	sym_hold_key.row = 4;
-	sym_hold_key.col = 1;
-	sym_hold_key.state = KEY_STATE_IDLE;
 
 	add_alarm_in_ms(reg_get_value(REG_ID_FRQ), timer_task, NULL, true);
 }

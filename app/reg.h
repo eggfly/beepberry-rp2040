@@ -9,12 +9,12 @@ enum reg_id
 	REG_ID_CFG = 0x02, // config
 	REG_ID_INT = 0x03, // interrupt status
 	REG_ID_KEY = 0x04, // key status
-	REG_ID_BKL = 0x05, // backlight
+
 	REG_ID_DEB = 0x06, // key debounce cfg (not implemented)
 	REG_ID_FRQ = 0x07, // key poll freq cfg
 	REG_ID_RST = 0x08, // trigger a reset
 	REG_ID_FIF = 0x09, // key fifo
-	REG_ID_BK2 = 0x0A, // backlight 2
+
 	REG_ID_DIR = 0x0B, // gpio direction
 	REG_ID_PUE = 0x0C, // gpio input pull enable
 	REG_ID_PUD = 0x0D, // gpio input pull direction
@@ -25,40 +25,11 @@ enum reg_id
 	REG_ID_ADR = 0x12, // i2c puppet address
 	REG_ID_IND = 0x13, // interrupt pin assert duration
 	REG_ID_CF2 = 0x14, // config 2
-	REG_ID_TOX = 0x15, // touch delta x since last read, at most (-128 to 127)
-	REG_ID_TOY = 0x16, // touch delta y since last read, at most (-128 to 127)
-
-	REG_ID_ADC = 0x17,
-	REG_ID_LED    = 0x20,
-	REG_ID_LED_R  = 0x21,
-	REG_ID_LED_G  = 0x22,
-	REG_ID_LED_B  = 0x23,
-
-	REG_ID_REWAKE_MINS = 0x24, // Write to turn off Pi, power on in this many mins
-	REG_ID_SHUTDOWN_GRACE = 0x25, // Seconds to wait between shutdown signal and power off
-
-	REG_ID_RTC_SEC = 0x26,
-	REG_ID_RTC_MIN = 0x27,
-	REG_ID_RTC_HOUR = 0x28,
-	REG_ID_RTC_MDAY = 0x29,
-	REG_ID_RTC_MON = 0x2A,
-	REG_ID_RTC_YEAR = 0x2B, // Years since 1900
-	REG_ID_RTC_COMMIT = 0x2C,
 
 	REG_ID_DRIVER_STATE = 0x2D, // Set when driver is loaded / unloaded cleanly
 
-	REG_ID_STARTUP_REASON = 0x2E, // Why the Pi was started (see `power_on_reason` in pi.h)
-
 	REG_ID_UPDATE_DATA = 0x30, // Write HEX data to start firmware update mode
 	// Read to get update mode (off, receiving, failed)
-
-	// Control the touchpad over I2C
-	// Write the register number to TOUCHPAD_REG,
-	// then read or write from TOUCHPAD_VAL
-	REG_ID_TOUCHPAD_REG = 0x40,
-	REG_ID_TOUCHPAD_VAL = 0x41,
-	REG_ID_TOUCHPAD_MIN_SQUAL = 0x42, // Minimum sensor reading quality
-	REG_ID_TOUCHPAD_LED = 0x43, // Sensor LED power (0x0 med, 0x3 high, 0x5 low)
 
 	REG_ID_LAST,
 };
@@ -72,13 +43,7 @@ enum reg_id
 #define CFG_REPORT_MODS		(1 << 6) // Should Alt, Sym and Shifts be reported as well
 #define CFG_USE_MODS		(1 << 7) // Should Alt, Sym and Shifts modify the keys reported
 
-#define CF2_TOUCH_INT		(1 << 0) // Should touch events generate interrupts
-#define CF2_USB_KEYB_ON		(1 << 1) // Should key events be sent over USB HID
-#define CF2_USB_MOUSE_ON	(1 << 2) // Should touch events be sent over USB HID
-// TODO? CF2_STICKY_MODS // Pressing and releasing a mod affects next key pressed
-#define CF2_AUTO_OFF        (1 << 3) // Automatically power off Pi and sleep
-// `shutdown grace` seconds after driver is unloaded
-// Supports power saving after running `shutdown` instead of using power key
+#define CF2_USB_KEYB_ON                (1 << 1) // Should key events be sent over USB HID
 
 #define INT_OVERFLOW		(1 << 0)
 #define INT_CAPSLOCK		(1 << 1)
@@ -114,4 +79,3 @@ void reg_clear_bit(enum reg_id reg, uint8_t bit);
 
 void reg_init(void);
 
-uint32_t reg_get_shutdown_grace_ms();

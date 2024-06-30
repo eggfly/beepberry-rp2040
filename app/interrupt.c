@@ -4,7 +4,6 @@
 #include "gpioexp.h"
 #include "keyboard.h"
 #include "reg.h"
-#include "touchpad.h"
 
 #include <pico/stdlib.h>
 
@@ -45,22 +44,6 @@ static void key_lock_cb(bool caps_changed, bool num_changed)
 	}
 }
 
-static void touch_cb(int8_t x, int8_t y)
-{
-	(void)x;
-	(void)y;
-
-	if (!reg_is_bit_set(REG_ID_CF2, CF2_TOUCH_INT))
-		return;
-
-	reg_set_bit(REG_ID_INT, INT_TOUCH);
-
-	gpio_put(PIN_INT, 0);
-	busy_wait_ms(reg_get_value(REG_ID_IND));
-	gpio_put(PIN_INT, 1);
-}
-static struct touch_callback touch_callback = { .func = touch_cb };
-
 static void gpioexp_cb(uint8_t gpio, uint8_t gpio_idx)
 {
 	(void)gpio;
@@ -85,8 +68,6 @@ void interrupt_init(void)
 	gpio_put(PIN_INT, true);
 
 	keyboard_add_key_callback(&key_callback);
-
-	touchpad_add_touch_callback(&touch_callback);
 
 	gpioexp_add_int_callback(&gpioexp_callback);
 }
