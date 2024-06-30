@@ -2,7 +2,6 @@ set(CMAKE_C_STANDARD 11)
 
 add_executable(firmware
 	debug.c
-	fifo.c
 	gpioexp.c
 	puppet_i2c.c
 	interrupt.c

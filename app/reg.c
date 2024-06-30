@@ -1,7 +1,6 @@
 #include "reg.h"
 
 #include "app_config.h"
-#include "fifo.h"
 #include "gpioexp.h"
 #include "puppet_i2c.h"
 #include "keyboard.h"
@@ -134,13 +133,6 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 		if (is_write) {
 			reg_set_value(reg, in_data);
 
-			// Driver loaded
-			if (in_data) {
-
-				// Clear any input queued while driver was unloaded
-				fifo_flush();
-			}
-
 		} else {
 			out_buffer[0] = reg_get_value(reg);
 			*out_len = sizeof(uint8_t);
@@ -153,21 +145,6 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 		out_buffer[0] = VER_VAL;
 		*out_len = sizeof(uint8_t);
 		break;
-
-	case REG_ID_KEY:
-		out_buffer[0] = fifo_count();
-		*out_len = sizeof(uint8_t);
-		break;
-
-	case REG_ID_FIF:
-	{
-		struct fifo_item item = fifo_dequeue();
-
-		out_buffer[0] = ((uint8_t*)&item)[0];
-		out_buffer[1] = ((uint8_t*)&item)[1];
-		*out_len = sizeof(uint8_t) * 2;
-		break;
-	}
 
 	case REG_ID_RST:
 		NVIC_SystemReset();
@@ -221,7 +198,7 @@ void reg_init(void)
 	reg_set_value(REG_ID_HLD, 100);	// 10ms units
 	reg_set_value(REG_ID_ADR, 0x1F);
 	reg_set_value(REG_ID_IND, 1);	// ms
-	reg_set_value(REG_ID_CF2, 0);
+	reg_set_value(REG_ID_CF2, CF2_USB_KEYB_ON);
 	reg_set_value(REG_ID_DRIVER_STATE, 0); // Driver not yet loaded
 }
 
