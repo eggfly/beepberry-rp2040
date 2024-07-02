@@ -1,10 +1,7 @@
 set(CMAKE_C_STANDARD 11)
 
 add_executable(firmware
-	debug.c
-	gpioexp.c
 	puppet_i2c.c
-	interrupt.c
 	keyboard.c
 	main.c
 	reg.c
@@ -33,15 +30,9 @@ target_link_libraries(firmware
 # create map/bin/hex/uf2 file in addition to elf
 pico_add_extra_outputs(firmware)
 
-# printf targets
-pico_enable_stdio_uart(firmware 1)
-
 pico_add_uf2_output(firmware)
 pico_add_hex_output(firmware)
 
 # binary info in flash
 pico_set_program_name(firmware "I2C Puppet")
 pico_set_program_version(firmware "3.6")
-
-# printf targets
-pico_enable_stdio_uart(firmware 1)

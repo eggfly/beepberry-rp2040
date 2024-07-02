@@ -4,13 +4,12 @@
 
 #include <hardware/rtc.h>
 
+#include "hardware/uart.h"
 #include "hardware/clocks.h"
 #include "hardware/rosc.h"
 #include "hardware/structs/scb.h"
 
 #include "debug.h"
-#include "gpioexp.h"
-#include "interrupt.h"
 #include "keyboard.h"
 #include "puppet_i2c.h"
 #include "reg.h"
@@ -24,17 +23,16 @@ int main(void)
 {
 	// This order is important because it determines callback call order
 
-#ifndef NDEBUG
+#ifdef DEBUG
 	debug_init();
 #endif
 
+	uart_deinit(uart0);
+	uart_deinit(uart1);
+
 	reg_init();
 
-	gpioexp_init();
-
 	keyboard_init();
-
-	interrupt_init();
 
 	puppet_i2c_init();
 

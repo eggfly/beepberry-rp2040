@@ -1,7 +1,6 @@
 #include "reg.h"
 
 #include "app_config.h"
-#include "gpioexp.h"
 #include "puppet_i2c.h"
 #include "keyboard.h"
 #include "hardware/adc.h"
@@ -69,39 +68,6 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 	}
 
 	// special R/W registers
-	case REG_ID_DIR: // gpio direction
-	case REG_ID_PUE: // gpio input pull enable
-	case REG_ID_PUD: // gpio input pull direction
-	{
-		if (is_write) {
-			switch (reg) {
-			case REG_ID_DIR:
-				gpioexp_update_dir(in_data);
-				break;
-			case REG_ID_PUE:
-				gpioexp_update_pue_pud(in_data, reg_get_value(REG_ID_PUD));
-				break;
-			case REG_ID_PUD:
-				gpioexp_update_pue_pud(reg_get_value(REG_ID_PUE), in_data);
-				break;
-			}
-		} else {
-			out_buffer[0] = reg_get_value(reg);
-			*out_len = sizeof(uint8_t);
-		}
-		break;
-	}
-
-	case REG_ID_GIO: // gpio value
-	{
-		if (is_write) {
-			gpioexp_set_value(in_data);
-		} else {
-			out_buffer[0] = gpioexp_get_value();
-			*out_len = sizeof(uint8_t);
-		}
-		break;
-	}
 
 	case REG_ID_UPDATE_DATA:
 	{
@@ -118,7 +84,7 @@ void reg_process_packet(uint8_t in_reg, uint8_t in_data, uint8_t *out_buffer, ui
 			} else {
 				reg_set_value(REG_ID_UPDATE_DATA, UPDATE_OFF);
 
-				update_commit_and_reboot();
+				add_alarm_in_ms(500, update_commit_alarm_callback, NULL, true);
 			}
 
 		} else {
