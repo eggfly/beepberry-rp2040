@@ -15,18 +15,15 @@
 #include "reg.h"
 #include "usb.h"
 
-// https://github.com/micropython/micropython/blob/5114f2c1ea7c05fc7ab920299967595cfc5307de/ports/rp2/modmachine.c#L179
-// https://github.com/raspberrypi/pico-extras/issues/41
 #include "pico/sleep.h"
 
 int main(void)
 {
-	// This order is important because it determines callback call order
-
 #ifdef DEBUG
 	debug_init();
 #endif
 
+	// Allow pins 0 and 1 for GPIO keyboard
 	uart_deinit(uart0);
 	uart_deinit(uart1);
 

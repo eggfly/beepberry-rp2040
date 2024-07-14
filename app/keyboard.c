@@ -27,23 +27,36 @@ static const uint8_t col_pins[NUM_OF_COLS] =
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 
+/*
+  0 1 2 3 4 5 6 7 8 9 a b c d e f
+0   1 2 3 4 5 6 7 8 9 0 -     Ctrl
+1   Q W E R T Y U I O P [   LSuper
+2   A S D F G H J K L ; '       rAlt
+3   Z X C V B N M , . /Up     Power
+4Esf1f2f3f4f5f6f7f8f9fAfBlS
+5                   ] \ Return  lAlt
+6                      DlrS
+7Sp `            LfDnEnRt     RSuper
+  0 1 2 3 4 5 6 7 8 9 a b c d e f
+*/
+
 static const uint8_t kbd_entries[NUM_OF_ROWS][NUM_OF_COLS] =
-{ {0,0,0,0,0,0,0,0}
-, {0,0,0,0,KEY_DELETE,0,0,0}
-, {0,0,0,0,0,0,0,0}
-, {0,0,0,0,0,0,0,0}
-, {KEY_RIGHT,KEY_BACKSPACE,KEY_ENTER,KEY_INSERT,KEY_UP,KEY_APOSTROPHE,KEY_LEFTBRACE,KEY_MINUS}
-, {0,0,KEY_BACKSLASH,KEY_F10,KEY_SLASH,KEY_SEMICOLON,KEY_P,KEY_0}
-, {KEY_DOWN,KEY_EQUAL,KEY_RIGHTBRACE,KEY_F9,KEY_DOT,KEY_L,KEY_O,KEY_9}
-, {KEY_LEFT,0,0,KEY_F8,KEY_COMMA,KEY_K,KEY_I,KEY_8}
-, {0,0,0,KEY_F7,KEY_M,KEY_J,KEY_U,KEY_7}
-, {0,0,0,KEY_F6,KEY_N,KEY_H,KEY_Y,KEY_6}
-, {0,0,0,KEY_F5,KEY_B,KEY_G,KEY_T,KEY_5}
-, {0,0,0,KEY_F4,KEY_V,KEY_F,KEY_R,KEY_4}
-, {0,0,0,KEY_F3,KEY_C,KEY_D,KEY_E,KEY_3}
-, {0,0,0,KEY_F2,KEY_X,KEY_S,KEY_W,KEY_2}
-, {KEY_GRAVE,0,0,KEY_F1,KEY_Z,KEY_A,KEY_Q,KEY_1}
-, {KEY_SPACE,0,0,KEY_ESC,0,KEY_CAPSLOCK,KEY_TAB,0}
+{ {0, 0, 0, 0, KEY_ESC, 0, 0, KEY_SPACE}
+, {KEY_1, KEY_Q, KEY_A, KEY_Z, KEY_F1, 0, 0, KEY_GRAVE}
+, {KEY_2, KEY_W, KEY_S, KEY_X, KEY_F2, 0, 0, 0}
+, {KEY_3, KEY_E, KEY_D, KEY_C, KEY_F3, 0, 0, 0}
+, {KEY_4, KEY_R, KEY_F, KEY_V, KEY_F4, 0, 0, 0}
+, {KEY_5, KEY_T, KEY_G, KEY_B, KEY_F5, 0, 0, 0}
+, {KEY_6, KEY_Y, KEY_H, KEY_N, KEY_F6, 0, 0, 0}
+, {KEY_7, KEY_U, KEY_J, KEY_M, KEY_F7, 0, 0, 0}
+, {KEY_8, KEY_I, KEY_K, KEY_COMMA, KEY_F8, 0, 0, KEY_LEFT}
+, {KEY_9, KEY_O, KEY_L, KEY_DOT, KEY_F9, KEY_RIGHTBRACE, 0, KEY_DOWN}
+, {KEY_0, KEY_P, KEY_SEMICOLON, KEY_SLASH, KEY_F10, KEY_BACKSLASH, 0, KEY_ENTER}
+, {KEY_MINUS, KEY_LEFTBRACE, KEY_APOSTROPHE, KEY_UP, KEY_F11, KEY_ENTER, KEY_BACKSPACE, KEY_RIGHT}
+, {0, 0, 0, 0, KEY_LEFTSHIFT, 0, KEY_RIGHTSHIFT, 0}
+, {0, KEY_LEFTMETA, 0, 0, 0, 0, 0, 0}
+, {KEY_LEFTCTRL, 0, 0, KEY_F13, 0, 0, 0, KEY_RIGHTMETA}
+, {0, 0, KEY_RIGHTALT, 0, 0, KEY_LEFTALT, 0, 0}
 };
 static bool kbd_pressed[NUM_OF_ROWS][NUM_OF_COLS] = {};
 
@@ -62,8 +75,8 @@ static void handle_key_event(uint r, uint c, bool pressed)
 	keycode = kbd_entries[r][c];
 
 	// Don't send disabled keycodes
-	if (true) {//keycode > 0) {
-		keyboard_inject_event((r << 4) + c, (pressed)
+	if (keycode > 0) {
+		keyboard_inject_event(keycode, (pressed)
 			? KEY_STATE_PRESSED
 			: KEY_STATE_RELEASED);
 	}
@@ -78,7 +91,6 @@ static int64_t timer_task(alarm_id_t id, void *user_data)
 	uint c, r, i;
 	bool pressed;
 
-#if 1
 	for (c = 0; c < NUM_OF_COLS; c++) {
 		gpio_pull_up(col_pins[c]);
 		gpio_put(col_pins[c], 0);
@@ -94,23 +106,7 @@ static int64_t timer_task(alarm_id_t id, void *user_data)
 		gpio_disable_pulls(col_pins[c]);
 		gpio_set_dir(col_pins[c], GPIO_IN);
 	}
-#else
-	for (r = 0; r < NUM_OF_ROWS; r++) {
-		gpio_pull_up(row_pins[r]);
-		gpio_put(row_pins[r], 0);
-		gpio_set_dir(row_pins[r], GPIO_OUT);
 
-		for (c = 0; c < NUM_OF_COLS; c++) {
-
-			pressed = (gpio_get(col_pins[c]) == 0);
-			handle_key_event(r, c, pressed);
-		}
-
-		gpio_put(row_pins[r], 1);
-		gpio_disable_pulls(row_pins[r]);
-		gpio_set_dir(row_pins[r], GPIO_IN);
-	}
-#endif
 	// negative value means interval since last alarm time
 	return -(reg_get_value(REG_ID_FRQ) * 1000);
 }
@@ -172,23 +168,14 @@ void keyboard_init(void)
 	// GPIO rows
 	for (i = 0; i < NUM_OF_ROWS; ++i) {
 		gpio_init(row_pins[i]);
-		#if 1
 		gpio_pull_up(row_pins[i]);
 		gpio_set_dir(row_pins[i], GPIO_IN);
-		#else
-		gpio_set_dir(row_pins[i], GPIO_IN);
-		#endif
 	}
 
 	// GPIO columns
 	for(i = 0; i < NUM_OF_COLS; ++i) {
-		#if 1
 		gpio_init(col_pins[i]);
 		gpio_set_dir(col_pins[i], GPIO_IN);
-		#else
-		gpio_pull_up(col_pins[i]);
-		gpio_set_dir(col_pins[i], GPIO_IN);
-		#endif
 	}
 
 	add_alarm_in_ms(reg_get_value(REG_ID_FRQ), timer_task, NULL, true);
