@@ -19,10 +19,11 @@ jobs:
                 release: '10-2020-q4'
                 directory: './arm-none-eabi/'
 
-            - name: List dir
+            - name: Set ENV
+              shell: bash
               run: |
-                - ls
-                - . /
+                echo "PICO_TOOLCHAIN_PATH=/home/runner/work/arm-none-eabi/" >> $GITHUB_ENV
+                ls -l . /
 
             - name: Clone repo
               uses: actions/checkout@v2
