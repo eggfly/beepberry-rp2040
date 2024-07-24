@@ -17,6 +17,8 @@ jobs:
               uses: fiam/arm-none-eabi-gcc@v1
               with:
                 release: '10-2020-q4'
+                directory: './arm-none-eabi/'
+
             - name: List dir
               run: |
                 - ls
