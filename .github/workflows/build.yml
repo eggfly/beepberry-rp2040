@@ -17,6 +17,10 @@ jobs:
               uses: fiam/arm-none-eabi-gcc@v1
               with:
                 release: '10-2020-q4'
+            - name: List dir
+              run: |
+                - ls
+                - . /
 
             - name: Clone repo
               uses: actions/checkout@v2
