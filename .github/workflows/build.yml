@@ -17,14 +17,15 @@ jobs:
               uses: fiam/arm-none-eabi-gcc@v1
               with:
                 release: '10-2020-q4'
-                directory: './arm-none-eabi/'
+                directory: '/home/runner/work/arm-none-eabi/'
 
             - name: Set ENV
               shell: bash
               run: |
                 pwd
-                echo "PICO_TOOLCHAIN_PATH=/home/runner/work/beepberry-rp2040/beepberry-rp2040/arm-none-eabi/arm-none-eabi/" >> $GITHUB_ENV
-                ls -l /home/runner/work/beepberry-rp2040/beepberry-rp2040/arm-none-eabi/
+                echo "PICO_TOOLCHAIN_PATH=/home/runner/work/arm-none-eabi/arm-none-eabi/" >> $GITHUB_ENV
+                ls -l /home/runner/work/arm-none-eabi/
+                ls -l /home/runner/work/arm-none-eabi/arm-none-eabi/
 
             - name: Clone repo
               uses: actions/checkout@v2
