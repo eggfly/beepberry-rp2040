@@ -23,7 +23,7 @@ jobs:
               shell: bash
               run: |
                 pwd
-                echo "PICO_TOOLCHAIN_PATH=/home/runner/work/arm-none-eabi/arm-none-eabi/" >> $GITHUB_ENV
+                echo "PICO_TOOLCHAIN_PATH=/home/runner/work/arm-none-eabi/" >> $GITHUB_ENV
                 ls -l /home/runner/work/arm-none-eabi/
                 ls -l /home/runner/work/arm-none-eabi/arm-none-eabi/
 
@@ -48,7 +48,7 @@ jobs:
                     ls -l /home/runner/work/beepberry-rp2040/
                     ls -l /home/runner/work/beepberry-rp2040/beepberry-rp2040/
                     cd ../../build
-                    cmake -DPICO_BOARD=bbq20kbd_breakout -DCMAKE_BUILD_TYPE=Debug ..
+                    cmake -DPICO_BOARD=beepy -DCMAKE_BUILD_TYPE=Debug ..
                     make
                     cp app/i2c_puppet.{bin,elf,uf2} ../output
 
