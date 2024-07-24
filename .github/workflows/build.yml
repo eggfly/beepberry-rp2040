@@ -24,7 +24,7 @@ jobs:
               run: |
                 pwd
                 echo "PICO_TOOLCHAIN_PATH=/home/runner/work/beepberry-rp2040/beepberry-rp2040/arm-none-eabi/" >> $GITHUB_ENV
-                ls -l . /
+                tree /home/runner/work/beepberry-rp2040/beepberry-rp2040/arm-none-eabi/
 
             - name: Clone repo
               uses: actions/checkout@v2
